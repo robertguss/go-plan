@@ -1,0 +1,1 @@
+{"schema":"go-plan/v1","command":"check","ok":false,"error":{"code":"plan_invalid","message":"plan validation failed","details":[{"path":".go-plan/plan.yaml","field":"schema","message":"unsupported schema"}]}}
