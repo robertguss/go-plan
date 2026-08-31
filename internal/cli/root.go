@@ -18,14 +18,24 @@ type options struct {
 	json bool
 	out  io.Writer
 }
+
 type appError struct {
-	Code, Message string
-	Details       []plan.Finding
+	Command string
+	Code    string
+	Message string
+	Details []plan.Finding
 }
 
 func (e *appError) Error() string { return e.Message }
 
-type usageError struct{ error }
+type usageError struct {
+	Command string
+	err     error
+}
+
+func (e *usageError) Error() string { return e.err.Error() }
+func (e *usageError) Unwrap() error { return e.err }
+
 type envelope struct {
 	Schema  string     `json:"schema"`
 	Command string     `json:"command"`
@@ -33,6 +43,7 @@ type envelope struct {
 	Result  any        `json:"result,omitempty"`
 	Error   *errorBody `json:"error,omitempty"`
 }
+
 type errorBody struct {
 	Code    string         `json:"code"`
 	Message string         `json:"message"`
@@ -46,11 +57,47 @@ func commandName(c *cobra.Command) string {
 	}
 	return strings.Join(parts[1:], " ")
 }
+
 func writeJSON(w io.Writer, v any) error {
 	enc := json.NewEncoder(w)
 	enc.SetEscapeHTML(false)
 	return enc.Encode(v)
 }
+
+func findings(f []plan.Finding) []plan.Finding {
+	if f == nil {
+		return []plan.Finding{}
+	}
+	return f
+}
+
+func annotate(c *cobra.Command, err error) error {
+	if err == nil {
+		return nil
+	}
+	cmd := commandName(c)
+	var ue *usageError
+	if errors.As(err, &ue) {
+		if ue.Command == "" {
+			ue.Command = cmd
+		}
+		return ue
+	}
+	var ae *appError
+	if errors.As(err, &ae) {
+		if ae.Command == "" {
+			ae.Command = cmd
+		}
+		ae.Details = findings(ae.Details)
+		return ae
+	}
+	var ve *plan.ValidationError
+	if errors.As(err, &ve) {
+		return &appError{Command: cmd, Code: "plan_invalid", Message: "plan validation failed", Details: findings(ve.Findings)}
+	}
+	return &appError{Command: cmd, Code: "operation_failed", Message: err.Error(), Details: []plan.Finding{}}
+}
+
 func (o *options) success(c *cobra.Command, result any, human func(io.Writer)) error {
 	if o.json {
 		return writeJSON(o.out, envelope{Schema: plan.Schema, Command: commandName(c), OK: true, Result: result})
@@ -58,31 +105,25 @@ func (o *options) success(c *cobra.Command, result any, human func(io.Writer)) e
 	human(o.out)
 	return nil
 }
+
 func (o *options) ws() (*workspace.Workspace, error) {
 	w, err := workspace.Discover(o.repo)
 	if err != nil {
-		return nil, &appError{"repository_not_found", err.Error(), []plan.Finding{}}
+		return nil, &appError{Code: "repository_not_found", Message: err.Error(), Details: []plan.Finding{}}
 	}
 	return w, nil
 }
 
-func (o *options) loadPlan() (*workspace.Workspace, plan.Plan, error) {
+func (o *options) do(c *cobra.Command, fn func(*workspace.Workspace) (any, func(io.Writer), error)) error {
 	w, err := o.ws()
 	if err != nil {
-		return nil, plan.Plan{}, err
+		return annotate(c, err)
 	}
-	p, err := w.Load()
+	result, human, err := fn(w)
 	if err != nil {
-		return nil, plan.Plan{}, domain(err)
+		return annotate(c, err)
 	}
-	return w, p, nil
-}
-func domain(err error) *appError {
-	var ve *plan.ValidationError
-	if errors.As(err, &ve) {
-		return &appError{"plan_invalid", "plan validation failed", ve.Findings}
-	}
-	return &appError{"operation_failed", err.Error(), []plan.Finding{}}
+	return o.success(c, result, human)
 }
 
 func NewRoot(out, errOut io.Writer) *cobra.Command {
@@ -100,71 +141,72 @@ func NewRoot(out, errOut io.Writer) *cobra.Command {
 	root.SetErr(errOut)
 	root.PersistentFlags().StringVar(&o.repo, "repo", "", "repository path")
 	root.PersistentFlags().BoolVar(&o.json, "json", false, "emit stable go-plan/v1 JSON")
-	root.SetFlagErrorFunc(func(c *cobra.Command, e error) error { return &usageError{e} })
+	root.SetFlagErrorFunc(func(c *cobra.Command, e error) error {
+		return &usageError{Command: commandName(c), err: e}
+	})
 	root.AddCommand(initCmd(o), checkCmd(o), statusCmd(o), approveCmd(o), readyCmd(o), graphCmd(o), removeCmd(o), taskCmd(o))
 	return root
 }
 
 func Execute() int {
-	root := NewRoot(os.Stdout, os.Stderr)
+	return Run(os.Stdout, os.Stderr, os.Args[1:])
+}
+
+func Run(out, errOut io.Writer, args []string) int {
+	root := NewRoot(out, errOut)
+	root.SetArgs(args)
 	err := root.Execute()
 	if err == nil {
 		return 0
 	}
-	oJSON, _ := root.Flags().GetBool("json")
-	if !oJSON {
-		oJSON, _ = root.PersistentFlags().GetBool("json")
-	}
+	jsonOut := oJSON(root, args)
 	var ue *usageError
 	if errors.As(err, &ue) {
-		if oJSON {
-			_ = writeJSON(os.Stdout, envelope{Schema: plan.Schema, Command: commandFromArgs(os.Args[1:]), OK: false, Error: &errorBody{"invalid_usage", ue.Error(), []plan.Finding{}}})
+		command := ue.Command
+		if command == "" {
+			command = "root"
+		}
+		if jsonOut {
+			_ = writeJSON(out, envelope{Schema: plan.Schema, Command: command, OK: false, Error: &errorBody{"invalid_usage", ue.Error(), []plan.Finding{}}})
 		} else {
-			fmt.Fprintln(os.Stderr, ue.Error())
+			fmt.Fprintln(errOut, ue.Error())
 		}
 		return 2
 	}
-	ae := domain(err)
-	var typed *appError
-	if errors.As(err, &typed) {
-		ae = typed
+	ae := &appError{Code: "operation_failed", Message: err.Error(), Details: []plan.Finding{}}
+	errors.As(err, &ae)
+	ae.Details = findings(ae.Details)
+	command := ae.Command
+	if command == "" {
+		command = "root"
 	}
-	if oJSON {
-		_ = writeJSON(os.Stdout, envelope{Schema: plan.Schema, Command: commandFromArgs(os.Args[1:]), OK: false, Error: &errorBody{ae.Code, ae.Message, ae.Details}})
+	if jsonOut {
+		_ = writeJSON(out, envelope{Schema: plan.Schema, Command: command, OK: false, Error: &errorBody{ae.Code, ae.Message, ae.Details}})
 	} else {
-		fmt.Fprintln(os.Stderr, "Error:", ae.Message)
+		fmt.Fprintln(errOut, "Error:", ae.Message)
 		for _, d := range ae.Details {
-			fmt.Fprintf(os.Stderr, "  %s [%s]: %s\n", d.Path, d.Field, d.Message)
+			fmt.Fprintf(errOut, "  %s [%s]: %s\n", d.Path, d.Field, d.Message)
 		}
 	}
 	return 1
 }
 
-func commandFromArgs(args []string) string {
-	var parts []string
-	for i := 0; i < len(args); i++ {
-		if args[i] == "--repo" {
-			i++
-			continue
-		}
-		if strings.HasPrefix(args[i], "-") {
-			continue
-		}
-		parts = append(parts, args[i])
-		if len(parts) == 2 || parts[0] != "task" {
-			break
+func oJSON(root *cobra.Command, args []string) bool {
+	if v, err := root.PersistentFlags().GetBool("json"); err == nil && v {
+		return true
+	}
+	for _, a := range args {
+		if a == "--json" {
+			return true
 		}
 	}
-	if len(parts) == 0 {
-		return "root"
-	}
-	return strings.Join(parts, " ")
+	return false
 }
 
 func exactArgs(n int) cobra.PositionalArgs {
 	return func(c *cobra.Command, args []string) error {
 		if len(args) != n {
-			return &usageError{fmt.Errorf("%s requires %d argument(s)", c.CommandPath(), n)}
+			return &usageError{Command: commandName(c), err: fmt.Errorf("%s requires %d argument(s)", c.CommandPath(), n)}
 		}
 		return nil
 	}

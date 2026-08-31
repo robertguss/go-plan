@@ -154,14 +154,23 @@ func (w *Workspace) ReorderTasks(order []string, dry bool) (Revision, error) {
 func (w *Workspace) publishRevision(p plan.Plan, dry bool) (Revision, error) {
 	mapping := map[string]string{}
 	oldPaths := map[string]bool{}
+	if dir, err := w.safe(".go-plan/tasks", true); err == nil {
+		entries, err := os.ReadDir(dir)
+		if err != nil && !os.IsNotExist(err) {
+			return Revision{}, err
+		}
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+				continue
+			}
+			oldPaths[filepath.ToSlash(filepath.Join(".go-plan/tasks", e.Name()))] = true
+		}
+	}
 	for i := range p.Tasks {
 		old := p.Tasks[i].Meta.ID
 		newID := plan.TaskID(i + 1)
 		if old != "" && old != newID {
 			mapping[old] = newID
-		}
-		if p.Tasks[i].Path != "" {
-			oldPaths[p.Tasks[i].Path] = true
 		}
 		p.Tasks[i].Meta.ID = newID
 		p.Tasks[i].Path = plan.TaskPath(i + 1)
@@ -203,12 +212,10 @@ func (w *Workspace) Start(id string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	for _, t := range p.Tasks {
-		if t.Meta.ID == id && t.Meta.State == plan.StateInProgress && plan.ApprovalFresh(p) {
-			return false, nil
-		}
+	if t, ok := p.Task(id); ok && t.Meta.State == plan.StateInProgress {
+		return false, nil
 	}
-	r := plan.Ready(p)
+	r := w.Ready(p)
 	if r.Task == nil {
 		return false, fmt.Errorf("task cannot start: %s", r.Reason)
 	}
@@ -217,9 +224,6 @@ func (w *Workspace) Start(id string) (bool, error) {
 	}
 	for i := range p.Tasks {
 		if p.Tasks[i].Meta.ID == id {
-			if p.Tasks[i].Meta.State == plan.StateInProgress {
-				return false, nil
-			}
 			p.Tasks[i].Meta.State = plan.StateInProgress
 			return true, w.Publish(map[string][]byte{p.Tasks[i].Path: plan.RenderTask(p.Tasks[i])})
 		}
@@ -263,14 +267,6 @@ func (w *Workspace) ValidateLinks(p plan.Plan) []plan.Finding {
 		check(t.Path, t.Raw)
 	}
 	return plan.SortedFindings(findings)
-}
-
-func (w *Workspace) Findings(p plan.Plan) []plan.Finding {
-	f := append(plan.Validate(p), w.ValidateLinks(p)...)
-	if err := w.CheckAgents(); err != nil {
-		f = append(f, plan.Finding{Path: "AGENTS.md", Field: "managed_block", Message: err.Error()})
-	}
-	return f
 }
 
 func (w *Workspace) Complete(id string) (bool, error) {
@@ -341,8 +337,7 @@ func (w *Workspace) RemovalPreview() ([]string, error) {
 }
 
 func (w *Workspace) Remove(force bool) error {
-	preview, err := w.RemovalPreview()
-	if err != nil {
+	if _, err := w.RemovalPreview(); err != nil {
 		return err
 	}
 	if !force {
@@ -350,10 +345,10 @@ func (w *Workspace) Remove(force bool) error {
 		if err != nil {
 			return err
 		}
-		if len(w.ValidateLinks(p)) > 0 || plan.DeriveStatus(p).State != "completed" {
+		if len(w.Findings(p)) > 0 || w.Status(p).State != "completed" {
 			return fmt.Errorf("default removal requires a valid completed plan")
 		}
-		if err = w.gitPlanClean(preview); err != nil {
+		if err = w.gitPlanClean(); err != nil {
 			return err
 		}
 	}
@@ -366,30 +361,31 @@ func (w *Workspace) Remove(force bool) error {
 	if err != nil {
 		return err
 	}
-	return w.withLock(func() error {
-		planPath := filepath.Join(w.Root, ".go-plan")
-		backup := filepath.Join(w.Root, ".gp-remove-backup")
-		if _, e := os.Lstat(backup); e == nil {
-			return fmt.Errorf("removal backup path already exists")
+	files := map[string][]byte{}
+	err = filepath.WalkDir(filepath.Join(w.Root, ".go-plan"), func(path string, d os.DirEntry, e error) error {
+		if e != nil {
+			return e
 		}
-		if err := os.Rename(planPath, backup); err != nil {
+		if d.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(w.Root, path)
+		if err != nil {
 			return err
 		}
-		rollback := func() { _ = os.Rename(backup, planPath); _ = os.WriteFile(agentPath, old, 0644) }
-		var writeErr error
-		if len(next) == 0 {
-			writeErr = os.Remove(agentPath)
-		} else {
-			writeErr = os.WriteFile(agentPath, next, 0644)
-		}
-		if writeErr != nil {
-			rollback()
-			return writeErr
-		}
-		if err := os.RemoveAll(backup); err != nil {
-			rollback()
-			return err
-		}
+		files[filepath.ToSlash(rel)] = nil
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	if len(next) == 0 {
+		files["AGENTS.md"] = nil
+	} else {
+		files["AGENTS.md"] = next
+	}
+	if err = w.Publish(files); err != nil {
+		return err
+	}
+	return os.RemoveAll(filepath.Join(w.Root, ".go-plan"))
 }

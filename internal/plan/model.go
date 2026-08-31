@@ -54,6 +54,42 @@ func (e *ValidationError) Error() string { return "plan validation failed" }
 func TaskID(n int) string   { return fmt.Sprintf("T-%03d", n) }
 func TaskPath(n int) string { return fmt.Sprintf(".go-plan/tasks/t-%03d.md", n) }
 
+func (p Plan) Task(id string) (Task, bool) {
+	for _, t := range p.Tasks {
+		if t.Meta.ID == id {
+			return t, true
+		}
+	}
+	return Task{}, false
+}
+
+type GraphNode struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	State string `json:"state"`
+}
+
+type GraphEdge struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+type Graph struct {
+	Nodes []GraphNode `json:"nodes"`
+	Edges []GraphEdge `json:"edges"`
+}
+
+func TaskGraph(p Plan) Graph {
+	g := Graph{Nodes: []GraphNode{}, Edges: []GraphEdge{}}
+	for i, t := range p.Tasks {
+		g.Nodes = append(g.Nodes, GraphNode{t.Meta.ID, t.Meta.Title, t.Meta.State})
+		if i > 0 {
+			g.Edges = append(g.Edges, GraphEdge{From: p.Tasks[i-1].Meta.ID, To: t.Meta.ID})
+		}
+	}
+	return g
+}
+
 var SpecificationHeadings = []string{"Objective", "Context", "Users and workflows", "Goals", "Non-goals", "Assumptions", "Requirements", "Constraints", "Acceptance criteria", "Open questions"}
 var ImplementationHeadings = []string{"Approach", "Architecture", "Technology and dependencies", "Interfaces and data flow", "Change surface", "Verification strategy", "Decisions and tradeoffs", "Risks and recovery", "Out of scope"}
 var TaskHeadings = []string{"Goal", "Context", "Deliverables", "Acceptance criteria", "Verification", "Evidence", "Out of scope"}

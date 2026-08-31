@@ -73,12 +73,12 @@ func TestValidateAndStatus(t *testing.T) {
 	if f := Validate(p); len(f) != 0 {
 		t.Fatalf("unexpected findings: %#v", f)
 	}
-	if got := DeriveStatus(p).State; got != "review_required" {
+	if got := DeriveStatus(p, false).State; got != "review_required" {
 		t.Fatalf("state %s", got)
 	}
 	d := ApprovalDigest(p)
 	p.Metadata.ApprovalDigest = &d
-	if got := DeriveStatus(p).State; got != "approved" {
+	if got := DeriveStatus(p, false).State; got != "approved" {
 		t.Fatalf("state %s", got)
 	}
 	p.Tasks[0].Meta.State = "in_progress"
@@ -103,7 +103,7 @@ func TestReadyAndLifecycleValidation(t *testing.T) {
 	p := validPlan()
 	d := ApprovalDigest(p)
 	p.Metadata.ApprovalDigest = &d
-	if r := Ready(p); r.Task == nil || r.Task.ID != "T-001" {
+	if r := Ready(p, false); r.Task == nil || r.Task.ID != "T-001" {
 		t.Fatalf("ready: %#v", r)
 	}
 	t2 := p.Tasks[0]
@@ -114,6 +114,35 @@ func TestReadyAndLifecycleValidation(t *testing.T) {
 	p.Tasks[1].Meta.State = "in_progress"
 	if len(Validate(p)) == 0 {
 		t.Fatal("accepted active task after open predecessor")
+	}
+}
+
+func TestInvalidStatusAndReady(t *testing.T) {
+	p := validPlan()
+	if got := DeriveStatus(p, true).State; got != "draft" {
+		t.Fatalf("state %s", got)
+	}
+	if r := Ready(p, true); r.Task != nil || r.Reason != "plan_invalid" {
+		t.Fatalf("ready: %#v", r)
+	}
+	g := TaskGraph(p)
+	if len(g.Nodes) != 1 || g.Nodes[0].ID != "T-001" || len(g.Edges) != 0 {
+		t.Fatalf("graph: %#v", g)
+	}
+	if _, ok := p.Task("T-001"); !ok {
+		t.Fatal("missing T-001")
+	}
+	if stale, ok := StaleApproval(p); ok || stale.Field != "" {
+		t.Fatalf("unexpected stale: %#v", stale)
+	}
+}
+
+func TestHasPlaceholderShapes(t *testing.T) {
+	if !HasPlaceholder("TODO") || !HasPlaceholder("- [ ] TODO") || !HasPlaceholder("- [x] TODO") || !HasPlaceholder("Note: TODO") || !HasPlaceholder("TODO (populate during execution)") {
+		t.Fatal("missed placeholder")
+	}
+	if HasPlaceholder("Content.") || HasPlaceholder("- [ ] Complete work.") {
+		t.Fatal("false placeholder")
 	}
 }
 

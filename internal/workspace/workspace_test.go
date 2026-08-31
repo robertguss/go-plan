@@ -23,6 +23,18 @@ func repo(t *testing.T) *Workspace {
 	return w
 }
 
+func commit(t *testing.T, root string, paths ...string) {
+	t.Helper()
+	args := append([]string{"-C", root, "add", "--"}, paths...)
+	if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v %s", err, out)
+	}
+	cmd := exec.Command("git", "-C", root, "-c", "user.email=t@t.test", "-c", "user.name=t", "commit", "-q", "-m", "plan")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git commit: %v %s", err, out)
+	}
+}
+
 func authorPlan(t *testing.T, w *Workspace) {
 	t.Helper()
 	replacements := map[string]map[string]string{
@@ -175,6 +187,53 @@ func TestRevisionDryRunAndSymlinkSafety(t *testing.T) {
 	}
 }
 
+func TestAddAfterAndRemoveTaskRefs(t *testing.T) {
+	w := repo(t)
+	if _, err := w.Initialize("Demo"); err != nil {
+		t.Fatal(err)
+	}
+	authorPlan(t, w)
+	if _, err := w.AddTask("One", []string{"AC-001"}, "", false); err != nil {
+		t.Fatal(err)
+	}
+	authorTask(t, w, "T-001")
+	if _, err := w.AddTask("Two", nil, "T-001", false); err != nil {
+		t.Fatal(err)
+	}
+	authorTask(t, w, "T-002")
+	p, err := w.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Tasks) != 2 || p.Tasks[1].Meta.Title != "Two" {
+		t.Fatalf("insert: %#v", p.Tasks)
+	}
+	impl := filepath.Join(w.Root, ".go-plan/implementation-plan.md")
+	b, err := os.ReadFile(impl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(impl, []byte(strings.Replace(string(b), "Content.", "See T-002.", 1)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = w.RemoveTask("T-002", false); err == nil {
+		t.Fatal("removed referenced task")
+	}
+	if err = os.WriteFile(impl, b, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = w.RemoveTask("T-002", false); err != nil {
+		t.Fatal(err)
+	}
+	p, err = w.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Tasks) != 1 || p.Tasks[0].Meta.ID != "T-001" {
+		t.Fatalf("after remove: %#v", p.Tasks)
+	}
+}
+
 func TestForceRemovalPreservesUserContent(t *testing.T) {
 	w := repo(t)
 	os.WriteFile(filepath.Join(w.Root, "AGENTS.md"), []byte("User text.\n"), 0644)
@@ -188,6 +247,98 @@ func TestForceRemovalPreservesUserContent(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join(w.Root, "AGENTS.md"))
 	if err != nil || string(b) != "User text.\n" {
 		t.Fatalf("AGENTS: %q %v", b, err)
+	}
+}
+
+func TestMissingAgentsMakesStatusDraft(t *testing.T) {
+	w := repo(t)
+	if _, err := w.Initialize("Demo"); err != nil {
+		t.Fatal(err)
+	}
+	authorPlan(t, w)
+	if _, err := w.AddTask("Build", []string{"AC-001"}, "", false); err != nil {
+		t.Fatal(err)
+	}
+	authorTask(t, w, "T-001")
+	if _, err := w.Approve(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(w.Root, "AGENTS.md"), []byte("user only\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	p, err := w.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := w.Status(p).State; got != "draft" {
+		t.Fatalf("status %s", got)
+	}
+	if r := w.Ready(p); r.Reason != "plan_invalid" {
+		t.Fatalf("ready %#v", r)
+	}
+	if f := w.Check(p); len(f) == 0 {
+		t.Fatal("check passed without agents")
+	}
+}
+
+func TestGitPlanCleanComparesSets(t *testing.T) {
+	if samePathSet(map[string]bool{"a": true, "extra": true}, map[string]bool{"a": true, "missing": true}) {
+		t.Fatal("equal-size mismatched sets compared equal")
+	}
+	w := repo(t)
+	if _, err := w.Initialize("Demo"); err != nil {
+		t.Fatal(err)
+	}
+	authorPlan(t, w)
+	if _, err := w.AddTask("Build", []string{"AC-001"}, "", false); err != nil {
+		t.Fatal(err)
+	}
+	authorTask(t, w, "T-001")
+	if err := w.gitPlanClean(); err == nil {
+		t.Fatal("accepted untracked plan")
+	}
+	commit(t, w.Root, ".go-plan")
+	if err := w.gitPlanClean(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDefaultRemovalRequiresCompletedTrackedPlan(t *testing.T) {
+	w := repo(t)
+	if _, err := w.Initialize("Demo"); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Remove(false); err == nil {
+		t.Fatal("removed incomplete plan")
+	}
+	authorPlan(t, w)
+	if _, err := w.AddTask("Build", []string{"AC-001"}, "", false); err != nil {
+		t.Fatal(err)
+	}
+	authorTask(t, w, "T-001")
+	if _, err := w.Approve(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Start("T-001"); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(w.Root, ".go-plan/tasks/t-001.md")
+	b, _ := os.ReadFile(path)
+	s := strings.ReplaceAll(string(b), "- [ ]", "- [x]")
+	s = strings.ReplaceAll(s, "Not recorded yet.", "go test ./... passed")
+	os.WriteFile(path, []byte(s), 0644)
+	if _, err := w.Complete("T-001"); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Remove(false); err == nil {
+		t.Fatal("removed untracked completed plan")
+	}
+	commit(t, w.Root, ".go-plan")
+	if err := w.Remove(false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(w.Root, ".go-plan")); !os.IsNotExist(err) {
+		t.Fatal("plan remains")
 	}
 }
 

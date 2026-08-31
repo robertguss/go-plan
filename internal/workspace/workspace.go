@@ -83,7 +83,7 @@ func validateAgents(data []byte, require bool) error {
 		return fmt.Errorf("AGENTS.md has malformed or duplicate go-plan markers")
 	}
 	if starts == 1 {
-		if _, _, _, err := parseAgentsBlock(s); err != nil {
+		if _, _, err := parseAgentsBlock(s); err != nil {
 			return err
 		}
 	}
@@ -93,39 +93,15 @@ func validateAgents(data []byte, require bool) error {
 	return nil
 }
 
-func renderedAgentsBlock(prefix int) string {
-	if prefix == 0 {
-		return AgentsBlock
-	}
-	start := strings.Replace(agentsStart, " -->", fmt.Sprintf(" prefix=%d -->", prefix), 1)
-	return strings.Replace(AgentsBlock, agentsStart, start, 1)
-}
-
-func parseAgentsBlock(s string) (block string, index, prefix int, err error) {
-	i := strings.Index(s, agentsStartPrefix)
+func parseAgentsBlock(s string) (block string, index int, err error) {
+	i := strings.Index(s, agentsStart)
 	if i < 0 {
-		return "", -1, 0, fmt.Errorf("AGENTS.md managed block is missing")
+		return "", -1, fmt.Errorf("AGENTS.md managed block is missing")
 	}
-	lineEnd := strings.Index(s[i:], "\n")
-	if lineEnd < 0 {
-		return "", i, 0, fmt.Errorf("AGENTS.md has malformed go-plan start marker")
+	if !strings.HasPrefix(s[i:], AgentsBlock) {
+		return "", i, fmt.Errorf("AGENTS.md managed block is modified")
 	}
-	line := s[i : i+lineEnd]
-	switch line {
-	case agentsStart:
-		prefix = 0
-	case strings.Replace(agentsStart, " -->", " prefix=1 -->", 1):
-		prefix = 1
-	case strings.Replace(agentsStart, " -->", " prefix=2 -->", 1):
-		prefix = 2
-	default:
-		return "", i, 0, fmt.Errorf("AGENTS.md has malformed go-plan start marker")
-	}
-	block = renderedAgentsBlock(prefix)
-	if !strings.HasPrefix(s[i:], block) {
-		return "", i, prefix, fmt.Errorf("AGENTS.md managed block is modified")
-	}
-	return block, i, prefix, nil
+	return AgentsBlock, i, nil
 }
 
 func installAgents(old []byte) ([]byte, error) {
@@ -135,17 +111,7 @@ func installAgents(old []byte) ([]byte, error) {
 	if strings.Contains(string(old), agentsStartPrefix) {
 		return nil, fmt.Errorf("AGENTS.md already contains a managed go-plan block")
 	}
-	if len(old) == 0 {
-		return []byte(AgentsBlock), nil
-	}
-	prefix := 1
-	if old[len(old)-1] != '\n' {
-		prefix = 2
-	}
-	out := append([]byte{}, old...)
-	out = append(out, strings.Repeat("\n", prefix)...)
-	out = append(out, renderedAgentsBlock(prefix)...)
-	return out, nil
+	return append(append([]byte{}, old...), AgentsBlock...), nil
 }
 
 func removeAgents(old []byte) ([]byte, error) {
@@ -153,16 +119,11 @@ func removeAgents(old []byte) ([]byte, error) {
 		return nil, err
 	}
 	s := string(old)
-	block, i, prefix, err := parseAgentsBlock(s)
+	block, i, err := parseAgentsBlock(s)
 	if err != nil {
 		return nil, err
 	}
-	start := i - prefix
-	if start < 0 || s[start:i] != strings.Repeat("\n", prefix) {
-		return nil, fmt.Errorf("AGENTS.md managed separator is modified")
-	}
-	out := s[:start] + s[i+len(block):]
-	return []byte(out), nil
+	return []byte(s[:i] + s[i+len(block):]), nil
 }
 
 func (w *Workspace) Initialize(title string) ([]string, error) {
@@ -174,6 +135,7 @@ func (w *Workspace) Initialize(title string) ([]string, error) {
 	}
 	agentPath := filepath.Join(w.Root, "AGENTS.md")
 	old, err := os.ReadFile(agentPath)
+	existed := err == nil
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
@@ -182,10 +144,15 @@ func (w *Workspace) Initialize(title string) ([]string, error) {
 		return nil, err
 	}
 	files := map[string][]byte{".go-plan/plan.yaml": plan.RenderMetadata(plan.Metadata{Schema: plan.Schema, Title: title}), ".go-plan/specification.md": plan.SpecificationTemplate(title), ".go-plan/implementation-plan.md": plan.ImplementationTemplate(title), "AGENTS.md": agents}
-	if err = os.MkdirAll(filepath.Join(w.Root, ".go-plan/tasks"), 0755); err != nil {
+	if err = w.Publish(files); err != nil {
 		return nil, err
 	}
-	if err = w.Publish(files); err != nil {
+	if err = os.MkdirAll(filepath.Join(w.Root, ".go-plan/tasks"), 0755); err != nil {
+		rollback := map[string][]byte{".go-plan/plan.yaml": nil, ".go-plan/specification.md": nil, ".go-plan/implementation-plan.md": nil, "AGENTS.md": nil}
+		if existed {
+			rollback["AGENTS.md"] = old
+		}
+		_ = w.Publish(rollback)
 		_ = os.RemoveAll(filepath.Join(w.Root, ".go-plan"))
 		return nil, err
 	}
@@ -252,7 +219,7 @@ func (w *Workspace) Load() (plan.Plan, error) {
 		}
 		p.Tasks = append(p.Tasks, t)
 	}
-	sort.Slice(p.Tasks, func(i, j int) bool { return p.Tasks[i].Meta.ID < p.Tasks[j].Meta.ID })
+	sort.Slice(p.Tasks, func(i, j int) bool { return p.Tasks[i].Path < p.Tasks[j].Path })
 	if len(findings) > 0 {
 		return p, &plan.ValidationError{Findings: plan.SortedFindings(findings)}
 	}
@@ -269,4 +236,28 @@ func (w *Workspace) CheckAgents() error {
 		return err
 	}
 	return validateAgents(b, true)
+}
+
+func (w *Workspace) Findings(p plan.Plan) []plan.Finding {
+	f := append(plan.Validate(p), w.ValidateLinks(p)...)
+	if err := w.CheckAgents(); err != nil {
+		f = append(f, plan.Finding{Path: "AGENTS.md", Field: "managed_block", Message: err.Error()})
+	}
+	return plan.SortedFindings(f)
+}
+
+func (w *Workspace) Check(p plan.Plan) []plan.Finding {
+	f := w.Findings(p)
+	if stale, ok := plan.StaleApproval(p); ok {
+		f = plan.SortedFindings(append(f, stale))
+	}
+	return f
+}
+
+func (w *Workspace) Status(p plan.Plan) plan.Status {
+	return plan.DeriveStatus(p, len(w.Findings(p)) > 0)
+}
+
+func (w *Workspace) Ready(p plan.Plan) plan.ReadyResult {
+	return plan.Ready(p, len(w.Findings(p)) > 0)
 }

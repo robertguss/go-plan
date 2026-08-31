@@ -57,7 +57,12 @@ func Validate(p Plan) []Finding {
 	}
 	covered := map[string]bool{}
 	active := 0
-	phase := 0 // done prefix, optional active, open suffix
+	const (
+		seqDonePrefix = iota
+		seqActive
+		seqOpenSuffix
+	)
+	seq := seqDonePrefix
 	for i, t := range p.Tasks {
 		path := t.Path
 		expected := TaskID(i + 1)
@@ -75,17 +80,17 @@ func Validate(p Plan) []Finding {
 		}
 		switch t.Meta.State {
 		case StateDone:
-			if phase != 0 {
+			if seq != seqDonePrefix {
 				add(path, "state", "done tasks must form a contiguous prefix")
 			}
 		case StateInProgress:
 			active++
-			if phase != 0 {
+			if seq != seqDonePrefix {
 				add(path, "state", "active task must immediately follow the completed prefix")
 			}
-			phase = 1
+			seq = seqActive
 		case StateOpen:
-			phase = 2
+			seq = seqOpenSuffix
 		}
 		for _, c := range t.Meta.Covers {
 			if !acIDRE.MatchString(c) || !known[c] {
@@ -153,7 +158,7 @@ type Status struct {
 	ApprovalFresh bool    `json:"approval_fresh"`
 }
 
-func DeriveStatus(p Plan) Status {
+func DeriveStatus(p Plan, invalid bool) Status {
 	s := Status{Total: len(p.Tasks), ApprovalFresh: ApprovalFresh(p)}
 	for _, t := range p.Tasks {
 		switch t.Meta.State {
@@ -171,7 +176,7 @@ func DeriveStatus(p Plan) Status {
 			s.Done++
 		}
 	}
-	if len(Validate(p)) > 0 {
+	if invalid {
 		s.State = "draft"
 	} else if !s.ApprovalFresh {
 		s.State = "review_required"
@@ -203,8 +208,8 @@ func Summary(t Task) TaskSummary {
 	}
 	return TaskSummary{t.Meta.ID, t.Meta.Title, t.Meta.State, c}
 }
-func Ready(p Plan) ReadyResult {
-	if len(Validate(p)) > 0 {
+func Ready(p Plan, invalid bool) ReadyResult {
+	if invalid {
 		return ReadyResult{Reason: "plan_invalid"}
 	}
 	if !ApprovalFresh(p) {
@@ -220,6 +225,13 @@ func Ready(p Plan) ReadyResult {
 		}
 	}
 	return ReadyResult{Reason: "plan_completed"}
+}
+
+func StaleApproval(p Plan) (Finding, bool) {
+	if p.Metadata.ApprovalDigest != nil && !ApprovalFresh(p) {
+		return Finding{Path: ".go-plan/plan.yaml", Field: "approval_digest", Message: "approval is stale"}, true
+	}
+	return Finding{}, false
 }
 
 func AllChecked(body string) bool {
@@ -241,14 +253,11 @@ func InvalidTitle(s string) bool {
 
 func HasPlaceholder(body string) bool {
 	for _, line := range strings.Split(body, "\n") {
-		line = strings.TrimSpace(line)
-		switch {
-		case line == Placeholder,
-			line == "- [ ] "+Placeholder,
-			line == "- [x] "+Placeholder,
-			line == "- [X] "+Placeholder,
-			strings.HasSuffix(line, ": "+Placeholder),
-			line == "TODO (populate during execution)":
+		s := strings.TrimSpace(line)
+		s = strings.TrimPrefix(s, "- [ ] ")
+		s = strings.TrimPrefix(s, "- [x] ")
+		s = strings.TrimPrefix(s, "- [X] ")
+		if s == Placeholder || s == Placeholder+" (populate during execution)" || strings.HasSuffix(s, ": "+Placeholder) {
 			return true
 		}
 	}

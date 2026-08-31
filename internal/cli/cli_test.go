@@ -84,6 +84,33 @@ func subprocess(t *testing.T, args ...string) (string, string, int) {
 	return "", "", -1
 }
 
+func TestRunPreservesTypedErrors(t *testing.T) {
+	d := t.TempDir()
+	var out, errOut bytes.Buffer
+	code := Run(&out, &errOut, []string{"--repo", d, "--json", "status"})
+	if code != 1 || errOut.Len() != 0 {
+		t.Fatalf("code=%d stderr=%q", code, errOut.String())
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["command"] != "status" || got["ok"] != false {
+		t.Fatalf("envelope: %s", out.Bytes())
+	}
+	errObj, _ := got["error"].(map[string]any)
+	if errObj["code"] != "repository_not_found" {
+		t.Fatalf("wanted repository_not_found, got %s", out.Bytes())
+	}
+
+	out.Reset()
+	errOut.Reset()
+	code = Run(&out, &errOut, []string{"--json", "status", "extra"})
+	if code != 2 || errOut.Len() != 0 || !strings.Contains(out.String(), `"code":"invalid_usage"`) || !strings.Contains(out.String(), `"command":"status"`) {
+		t.Fatalf("usage: code=%d stdout=%q stderr=%q", code, out.String(), errOut.String())
+	}
+}
+
 func TestExitAndErrorContracts(t *testing.T) {
 	_, stderr, code := subprocess(t, "status", "extra")
 	if code != 2 || strings.Contains(stderr, "Usage:") {
