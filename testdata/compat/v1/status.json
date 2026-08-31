@@ -1,0 +1,1 @@
+{"schema":"go-plan/v1","command":"status","ok":true,"result":{"state":"review_required","total":1,"open":1,"in_progress":0,"done":0,"active_task":null,"next_task":"T-001","approval_fresh":false}}

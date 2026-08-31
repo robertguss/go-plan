@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+go_version="1.23.12"
+
+missing_packages=()
+for package in ca-certificates curl git tar; do
+  if ! dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -Fq 'install ok installed'; then
+    missing_packages+=("$package")
+  fi
+done
+
+if ((${#missing_packages[@]})); then
+  echo "Installing system packages: ${missing_packages[*]}"
+  sudo apt-get update -qq
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${missing_packages[@]}"
+fi
+
+case "$(uname -m)" in
+  x86_64)
+    go_arch="amd64"
+    go_sha256="d3847fef834e9db11bf64e3fb34db9c04db14e068eeb064f49af747010454f90"
+    ;;
+  aarch64|arm64)
+    go_arch="arm64"
+    go_sha256="52ce172f96e21da53b1ae9079808560d49b02ac86cecfa457217597f9bc28ab3"
+    ;;
+  *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+esac
+
+if [[ ! -x /usr/local/go/bin/go ]] || [[ "$(/usr/local/go/bin/go version)" != "go version go${go_version} linux/${go_arch}" ]]; then
+  echo "Installing Go ${go_version} for linux/${go_arch}"
+  archive="$(mktemp)"
+  trap 'rm -f "$archive"' EXIT
+  url="https://go.dev/dl/go${go_version}.linux-${go_arch}.tar.gz"
+  curl --fail --location --silent --show-error "$url" --output "$archive"
+  printf '%s  %s\n' "$go_sha256" "$archive" | sha256sum --check --status
+  sudo rm -rf /usr/local/go
+  sudo tar -C /usr/local -xzf "$archive"
+  rm -f "$archive"
+  trap - EXIT
+fi
+
+sudo ln -sfn /usr/local/go/bin/go /usr/local/bin/go
+sudo ln -sfn /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+export PATH="/usr/local/go/bin:$PATH"
+
+echo "Downloading Go module dependencies"
+time go mod download
+
+echo "Warming the build and test cache"
+time go test ./...
