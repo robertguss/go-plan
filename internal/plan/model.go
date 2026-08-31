@@ -41,6 +41,7 @@ type Task struct {
 	Deliverables       []ChecklistItem `yaml:"-"`
 	AcceptanceCriteria []ChecklistItem `yaml:"-"`
 	Raw                []byte          `yaml:"-"`
+	Path               string          `yaml:"-"`
 }
 
 type ChecklistItem struct {
