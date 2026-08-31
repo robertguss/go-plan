@@ -1,0 +1,37 @@
+# Implementation plan: Example plan
+
+## Approach
+
+<!-- TODO: Describe the implementation approach. -->
+
+## Architecture
+
+<!-- TODO: Describe module boundaries. -->
+
+## Technology and dependencies
+
+<!-- TODO: Record technology choices and dependencies. -->
+
+## Interfaces and data flow
+
+<!-- TODO: Describe interfaces and data flow. -->
+
+## Change surface
+
+<!-- TODO: List expected files and modules. -->
+
+## Verification strategy
+
+<!-- TODO: Define verification at task and plan level. -->
+
+## Decisions and tradeoffs
+
+<!-- TODO: Record choices and alternatives. -->
+
+## Risks and recovery
+
+<!-- TODO: Identify risks and recovery steps. -->
+
+## Out of scope
+
+<!-- TODO: State what this plan will not implement. -->
