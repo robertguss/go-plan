@@ -10,18 +10,21 @@ const Placeholder = "TODO"
 //go:embed templates/*.md
 var templateFiles embed.FS
 
-func SpecificationTemplate(title string) []byte {
-	data, _ := templateFiles.ReadFile("templates/specification.md")
+func renderTemplate(filename, title string) []byte {
+	data, _ := templateFiles.ReadFile("templates/" + filename)
 	return []byte(strings.ReplaceAll(string(data), "{{TITLE}}", title))
 }
 
+func SpecificationTemplate(title string) []byte {
+	return renderTemplate("specification.md", title)
+}
+
 func ImplementationTemplate(title string) []byte {
-	data, _ := templateFiles.ReadFile("templates/implementation-plan.md")
-	return []byte(strings.ReplaceAll(string(data), "{{TITLE}}", title))
+	return renderTemplate("implementation-plan.md", title)
 }
 
 func NewTask(id, title string, covers []string) Task {
 	data, _ := templateFiles.ReadFile("templates/task.md")
 	doc, _ := ParseDocument(data, TaskHeadings)
-	return Task{Meta: TaskMeta{Schema: Schema, ID: id, Title: title, State: "open", Covers: covers}, Document: doc}
+	return Task{Meta: TaskMeta{Schema: Schema, ID: id, Title: title, State: StateOpen, Covers: covers}, Document: doc}
 }

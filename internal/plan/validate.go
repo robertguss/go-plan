@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"regexp"
-	"sort"
 	"strings"
 )
 
@@ -26,7 +25,7 @@ func AcceptanceIDs(p Plan) []string {
 func Validate(p Plan) []Finding {
 	var f []Finding
 	add := func(path, field, message string) { f = append(f, Finding{path, field, message}) }
-	if strings.TrimSpace(p.Metadata.Title) == "" || strings.ContainsAny(p.Metadata.Title, "\r\n") {
+	if InvalidTitle(p.Metadata.Title) {
 		add(".go-plan/plan.yaml", "title", "must be a non-empty single line")
 	}
 	for path, d := range map[string]Document{".go-plan/specification.md": p.Specification, ".go-plan/implementation-plan.md": p.Implementation} {
@@ -68,24 +67,24 @@ func Validate(p Plan) []Finding {
 		if t.Path != TaskPath(i+1) {
 			add(path, "filename", "expected "+TaskPath(i+1))
 		}
-		if t.Meta.State != "open" && t.Meta.State != "in_progress" && t.Meta.State != "done" {
+		if t.Meta.State != StateOpen && t.Meta.State != StateInProgress && t.Meta.State != StateDone {
 			add(path, "state", "expected open, in_progress, or done")
 		}
-		if strings.TrimSpace(t.Meta.Title) == "" || strings.ContainsAny(t.Meta.Title, "\r\n") {
+		if InvalidTitle(t.Meta.Title) {
 			add(path, "title", "must be a non-empty single line")
 		}
 		switch t.Meta.State {
-		case "done":
+		case StateDone:
 			if phase != 0 {
 				add(path, "state", "done tasks must form a contiguous prefix")
 			}
-		case "in_progress":
+		case StateInProgress:
 			active++
 			if phase != 0 {
 				add(path, "state", "active task must immediately follow the completed prefix")
 			}
 			phase = 1
-		case "open":
+		case StateOpen:
 			phase = 2
 		}
 		for _, c := range t.Meta.Covers {
@@ -95,7 +94,7 @@ func Validate(p Plan) []Finding {
 				covered[c] = true
 			}
 		}
-		for _, h := range []string{"Goal", "Context", "Deliverables", "Acceptance criteria", "Verification", "Out of scope"} {
+		for _, h := range ApprovalTaskHeadings {
 			if HasPlaceholder(t.Sections[h]) || strings.TrimSpace(t.Sections[h]) == "" {
 				add(path, h, "contains a template placeholder")
 			}
@@ -128,7 +127,7 @@ func ApprovalDigest(p Plan) string {
 	h.Write([]byte(p.Implementation.Raw))
 	for _, t := range p.Tasks {
 		fmt.Fprintf(h, "\x00%s\x00%s\x00%s", t.Meta.ID, t.Meta.Title, strings.Join(t.Meta.Covers, "\x00"))
-		for _, name := range []string{"Goal", "Context", "Deliverables", "Acceptance criteria", "Verification", "Out of scope"} {
+		for _, name := range ApprovalTaskHeadings {
 			body := checkboxRE.ReplaceAllString(t.Sections[name], "- [ ] $2")
 			h.Write([]byte{0})
 			h.Write([]byte(name))
@@ -158,17 +157,17 @@ func DeriveStatus(p Plan) Status {
 	s := Status{Total: len(p.Tasks), ApprovalFresh: ApprovalFresh(p)}
 	for _, t := range p.Tasks {
 		switch t.Meta.State {
-		case "open":
+		case StateOpen:
 			s.Open++
 			if s.NextTask == nil {
 				x := t.Meta.ID
 				s.NextTask = &x
 			}
-		case "in_progress":
+		case StateInProgress:
 			s.InProgress++
 			x := t.Meta.ID
 			s.ActiveTask = &x
-		case "done":
+		case StateDone:
 			s.Done++
 		}
 	}
@@ -212,10 +211,10 @@ func Ready(p Plan) ReadyResult {
 		return ReadyResult{Reason: "approval_required"}
 	}
 	for _, t := range p.Tasks {
-		if t.Meta.State == "in_progress" {
+		if t.Meta.State == StateInProgress {
 			return ReadyResult{Reason: "task_active"}
 		}
-		if t.Meta.State == "open" {
+		if t.Meta.State == StateOpen {
 			x := Summary(t)
 			return ReadyResult{Task: &x}
 		}
@@ -236,20 +235,22 @@ func AllChecked(body string) bool {
 	return true
 }
 
+func InvalidTitle(s string) bool {
+	return strings.TrimSpace(s) == "" || strings.ContainsAny(s, "\r\n")
+}
+
 func HasPlaceholder(body string) bool {
 	for _, line := range strings.Split(body, "\n") {
 		line = strings.TrimSpace(line)
-		if line == Placeholder || line == "- [ ] "+Placeholder || line == "- [x] "+Placeholder || line == "- [X] "+Placeholder || strings.HasSuffix(line, ": "+Placeholder) || line == "TODO (populate during execution)" {
+		switch {
+		case line == Placeholder,
+			line == "- [ ] "+Placeholder,
+			line == "- [x] "+Placeholder,
+			line == "- [X] "+Placeholder,
+			strings.HasSuffix(line, ": "+Placeholder),
+			line == "TODO (populate during execution)":
 			return true
 		}
 	}
 	return false
-}
-func SortedIDs(m map[string]bool) []string {
-	var r []string
-	for k := range m {
-		r = append(r, k)
-	}
-	sort.Strings(r)
-	return r
 }

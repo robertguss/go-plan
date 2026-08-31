@@ -142,7 +142,10 @@ func installAgents(old []byte) ([]byte, error) {
 	if old[len(old)-1] != '\n' {
 		prefix = 2
 	}
-	return append(append(append([]byte{}, old...), []byte(strings.Repeat("\n", prefix))...), []byte(renderedAgentsBlock(prefix))...), nil
+	out := append([]byte{}, old...)
+	out = append(out, strings.Repeat("\n", prefix)...)
+	out = append(out, renderedAgentsBlock(prefix)...)
+	return out, nil
 }
 
 func removeAgents(old []byte) ([]byte, error) {
@@ -163,7 +166,7 @@ func removeAgents(old []byte) ([]byte, error) {
 }
 
 func (w *Workspace) Initialize(title string) ([]string, error) {
-	if strings.TrimSpace(title) == "" || strings.ContainsAny(title, "\r\n") {
+	if plan.InvalidTitle(title) {
 		return nil, fmt.Errorf("title must be a non-empty single line")
 	}
 	if w.PlanExists() {

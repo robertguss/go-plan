@@ -2,7 +2,12 @@ package plan
 
 import "fmt"
 
-const Schema = "go-plan/v1"
+const (
+	Schema          = "go-plan/v1"
+	StateOpen       = "open"
+	StateInProgress = "in_progress"
+	StateDone       = "done"
+)
 
 type Metadata struct {
 	Schema         string  `yaml:"schema"`
@@ -52,3 +57,8 @@ func TaskPath(n int) string { return fmt.Sprintf(".go-plan/tasks/t-%03d.md", n) 
 var SpecificationHeadings = []string{"Objective", "Context", "Users and workflows", "Goals", "Non-goals", "Assumptions", "Requirements", "Constraints", "Acceptance criteria", "Open questions"}
 var ImplementationHeadings = []string{"Approach", "Architecture", "Technology and dependencies", "Interfaces and data flow", "Change surface", "Verification strategy", "Decisions and tradeoffs", "Risks and recovery", "Out of scope"}
 var TaskHeadings = []string{"Goal", "Context", "Deliverables", "Acceptance criteria", "Verification", "Evidence", "Out of scope"}
+
+// ApprovalTaskHeadings are the task sections that validation requires to be
+// populated and that participate in the approval digest. Evidence is excluded
+// so execution notes can be recorded without invalidating approval.
+var ApprovalTaskHeadings = []string{"Goal", "Context", "Deliverables", "Acceptance criteria", "Verification", "Out of scope"}

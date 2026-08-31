@@ -14,10 +14,9 @@ import (
 )
 
 type options struct {
-	repo     string
-	json     bool
-	command  string
-	out, err io.Writer
+	repo string
+	json bool
+	out  io.Writer
 }
 type appError struct {
 	Code, Message string
@@ -66,6 +65,18 @@ func (o *options) ws() (*workspace.Workspace, error) {
 	}
 	return w, nil
 }
+
+func (o *options) loadPlan() (*workspace.Workspace, plan.Plan, error) {
+	w, err := o.ws()
+	if err != nil {
+		return nil, plan.Plan{}, err
+	}
+	p, err := w.Load()
+	if err != nil {
+		return nil, plan.Plan{}, domain(err)
+	}
+	return w, p, nil
+}
 func domain(err error) *appError {
 	var ve *plan.ValidationError
 	if errors.As(err, &ve) {
@@ -75,18 +86,22 @@ func domain(err error) *appError {
 }
 
 func NewRoot(out, errOut io.Writer) *cobra.Command {
-	o := &options{out: out, err: errOut}
-	root := &cobra.Command{Use: "gp", Short: "Git-native sequential planning", Long: "gp installs and enforces one deterministic, offline implementation plan in a Git repository.", Example: "  gp init --title \"Add offline planning\"\n  gp status\n  gp ready --json", SilenceUsage: true, SilenceErrors: true}
+	o := &options{out: out}
+	root := &cobra.Command{
+		Use:           "gp",
+		Short:         "Git-native sequential planning",
+		Long:          "gp installs and enforces one deterministic, offline implementation plan in a Git repository.",
+		Example:       "  gp init --title \"Add offline planning\"\n  gp status\n  gp ready --json",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
 	root.CompletionOptions.DisableDefaultCmd = true
-	root.PersistentPreRun = func(c *cobra.Command, _ []string) { o.command = commandName(c) }
-	root.Annotations = map[string]string{}
 	root.SetOut(out)
 	root.SetErr(errOut)
 	root.PersistentFlags().StringVar(&o.repo, "repo", "", "repository path")
 	root.PersistentFlags().BoolVar(&o.json, "json", false, "emit stable go-plan/v1 JSON")
 	root.SetFlagErrorFunc(func(c *cobra.Command, e error) error { return &usageError{e} })
 	root.AddCommand(initCmd(o), checkCmd(o), statusCmd(o), approveCmd(o), readyCmd(o), graphCmd(o), removeCmd(o), taskCmd(o))
-	root.PersistentPostRun = func(_ *cobra.Command, _ []string) { root.Annotations["command"] = o.command }
 	return root
 }
 
@@ -110,14 +125,12 @@ func Execute() int {
 		return 2
 	}
 	ae := domain(err)
-	if errors.As(err, &ae) {
+	var typed *appError
+	if errors.As(err, &typed) {
+		ae = typed
 	}
 	if oJSON {
-		command := root.Annotations["command"]
-		if command == "" {
-			command = commandFromArgs(os.Args[1:])
-		}
-		_ = writeJSON(os.Stdout, envelope{Schema: plan.Schema, Command: command, OK: false, Error: &errorBody{ae.Code, ae.Message, ae.Details}})
+		_ = writeJSON(os.Stdout, envelope{Schema: plan.Schema, Command: commandFromArgs(os.Args[1:]), OK: false, Error: &errorBody{ae.Code, ae.Message, ae.Details}})
 	} else {
 		fmt.Fprintln(os.Stderr, "Error:", ae.Message)
 		for _, d := range ae.Details {

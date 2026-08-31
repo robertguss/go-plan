@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func (w *Workspace) gitPlanClean() error {
+func (w *Workspace) gitPlanClean(preview []string) error {
 	out, err := exec.Command("git", "-C", w.Root, "status", "--porcelain", "--", ".go-plan").Output()
 	if err != nil {
 		return err
@@ -19,10 +19,6 @@ func (w *Workspace) gitPlanClean() error {
 		return err
 	}
 	tracked := strings.Fields(string(out))
-	preview, err := w.RemovalPreview()
-	if err != nil {
-		return err
-	}
 	if len(tracked) != len(preview)-1 {
 		return fmt.Errorf("every .go-plan file must be tracked before removal")
 	}

@@ -22,10 +22,7 @@ func (w *Workspace) lockPath() (string, error) {
 	return p, nil
 }
 
-// Publish atomically replaces a candidate set as one reported operation and
-// restores every original byte if any publication step fails. A nil value
-// removes a managed file.
-func (w *Workspace) Publish(files map[string][]byte) error {
+func (w *Workspace) withLock(fn func() error) error {
 	lock, err := w.lockPath()
 	if err != nil {
 		return err
@@ -36,91 +33,100 @@ func (w *Workspace) Publish(files map[string][]byte) error {
 	}
 	lf.Close()
 	defer os.Remove(lock)
-	tmp, err := os.MkdirTemp(w.Root, ".gp-transaction-")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(tmp)
-	keys := make([]string, 0, len(files))
-	for k := range files {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	type original struct {
-		data   []byte
-		mode   os.FileMode
-		exists bool
-	}
-	orig := map[string]original{}
-	for i, k := range keys {
-		p, err := w.safe(k, true)
+	return fn()
+}
+
+// Publish atomically replaces a candidate set as one reported operation and
+// restores every original byte if any publication step fails. A nil value
+// removes a managed file.
+func (w *Workspace) Publish(files map[string][]byte) error {
+	return w.withLock(func() error {
+		tmp, err := os.MkdirTemp(w.Root, ".gp-transaction-")
 		if err != nil {
 			return err
 		}
-		fi, e := os.Lstat(p)
-		if e == nil {
-			if fi.IsDir() {
-				return fmt.Errorf("managed target is a directory: %s", k)
-			}
-			b, e := os.ReadFile(p)
-			if e != nil {
-				return e
-			}
-			orig[k] = original{b, fi.Mode(), true}
-		} else if !errors.Is(e, os.ErrNotExist) {
-			return e
+		defer os.RemoveAll(tmp)
+		keys := make([]string, 0, len(files))
+		for k := range files {
+			keys = append(keys, k)
 		}
-		if files[k] != nil {
-			stage := filepath.Join(tmp, fmt.Sprintf("%06d", i))
-			if err = os.WriteFile(stage, files[k], 0644); err != nil {
+		sort.Strings(keys)
+		type original struct {
+			data   []byte
+			mode   os.FileMode
+			exists bool
+		}
+		orig := map[string]original{}
+		for i, k := range keys {
+			p, err := w.safe(k, true)
+			if err != nil {
 				return err
 			}
-			f, e := os.Open(stage)
+			fi, e := os.Lstat(p)
 			if e == nil {
-				e = f.Sync()
-				f.Close()
-			}
-			if e != nil {
+				if fi.IsDir() {
+					return fmt.Errorf("managed target is a directory: %s", k)
+				}
+				b, e := os.ReadFile(p)
+				if e != nil {
+					return e
+				}
+				orig[k] = original{b, fi.Mode(), true}
+			} else if !errors.Is(e, os.ErrNotExist) {
 				return e
 			}
-		}
-	}
-	rollback := func() {
-		for _, k := range keys {
-			p, _ := w.safe(k, true)
-			o := orig[k]
-			if o.exists {
-				os.MkdirAll(filepath.Dir(p), 0755)
-				_ = os.WriteFile(p, o.data, o.mode)
-			} else {
-				_ = os.Remove(p)
+			if files[k] != nil {
+				stage := filepath.Join(tmp, fmt.Sprintf("%06d", i))
+				if err = os.WriteFile(stage, files[k], 0644); err != nil {
+					return err
+				}
+				f, e := os.Open(stage)
+				if e == nil {
+					e = f.Sync()
+					f.Close()
+				}
+				if e != nil {
+					return e
+				}
 			}
 		}
-	}
-	for i, k := range keys {
-		p, _ := w.safe(k, true)
-		if w.beforePublish != nil {
-			if err = w.beforePublish(i, k); err != nil {
+		rollback := func() {
+			for _, k := range keys {
+				p, _ := w.safe(k, true)
+				o := orig[k]
+				if o.exists {
+					os.MkdirAll(filepath.Dir(p), 0755)
+					_ = os.WriteFile(p, o.data, o.mode)
+				} else {
+					_ = os.Remove(p)
+				}
+			}
+		}
+		for i, k := range keys {
+			p, _ := w.safe(k, true)
+			if w.beforePublish != nil {
+				if err = w.beforePublish(i, k); err != nil {
+					rollback()
+					return err
+				}
+			}
+			if err = os.MkdirAll(filepath.Dir(p), 0755); err != nil {
 				rollback()
 				return err
 			}
-		}
-		if err = os.MkdirAll(filepath.Dir(p), 0755); err != nil {
-			rollback()
-			return err
-		}
-		if files[k] == nil {
-			err = os.Remove(p)
-			if errors.Is(err, os.ErrNotExist) {
-				err = nil
+			if files[k] == nil {
+				err = os.Remove(p)
+				if errors.Is(err, os.ErrNotExist) {
+					err = nil
+				}
+			} else {
+				err = os.Rename(filepath.Join(tmp, fmt.Sprintf("%06d", i)), p)
 			}
-		} else {
-			err = os.Rename(filepath.Join(tmp, fmt.Sprintf("%06d", i)), p)
+			if err != nil {
+				rollback()
+				return fmt.Errorf("publish %s: %w", k, err)
+			}
 		}
-		if err != nil {
-			rollback()
-			return fmt.Errorf("publish %s: %w", k, err)
-		}
-	}
-	return nil
+		return nil
+	})
 }

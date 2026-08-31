@@ -23,11 +23,8 @@ func (w *Workspace) Approve() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	f := append(plan.Validate(p), w.ValidateLinks(p)...)
-	if err := w.CheckAgents(); err != nil {
-		f = append(f, plan.Finding{Path: "AGENTS.md", Field: "managed_block", Message: err.Error()})
-	}
-	if f = plan.SortedFindings(f); len(f) > 0 {
+	f := plan.SortedFindings(w.Findings(p))
+	if len(f) > 0 {
 		return "", &plan.ValidationError{Findings: f}
 	}
 	d := plan.ApprovalDigest(p)
@@ -43,7 +40,7 @@ func (w *Workspace) AddTask(title string, covers []string, after string, dry boo
 	if err != nil {
 		return Revision{}, err
 	}
-	if strings.TrimSpace(title) == "" || strings.ContainsAny(title, "\r\n") {
+	if plan.InvalidTitle(title) {
 		return Revision{}, fmt.Errorf("title must be a non-empty single line")
 	}
 	known := map[string]bool{}
@@ -70,7 +67,7 @@ func (w *Workspace) AddTask(title string, covers []string, after string, dry boo
 			return Revision{}, fmt.Errorf("unknown task %s", after)
 		}
 		for i := idx; i < len(p.Tasks); i++ {
-			if p.Tasks[i].Meta.State != "open" {
+			if p.Tasks[i].Meta.State != plan.StateOpen {
 				return Revision{}, fmt.Errorf("cannot renumber completed or active task %s", p.Tasks[i].Meta.ID)
 			}
 		}
@@ -90,7 +87,7 @@ func (w *Workspace) RemoveTask(id string, dry bool) (Revision, error) {
 	for i, t := range p.Tasks {
 		if t.Meta.ID == id {
 			idx = i
-			if t.Meta.State != "open" {
+			if t.Meta.State != plan.StateOpen {
 				return Revision{}, fmt.Errorf("only open tasks may be removed")
 			}
 			break
@@ -129,7 +126,7 @@ func (w *Workspace) ReorderTasks(order []string, dry bool) (Revision, error) {
 		return Revision{}, err
 	}
 	prefix := 0
-	for prefix < len(p.Tasks) && p.Tasks[prefix].Meta.State != "open" {
+	for prefix < len(p.Tasks) && p.Tasks[prefix].Meta.State != plan.StateOpen {
 		prefix++
 	}
 	open := p.Tasks[prefix:]
@@ -207,7 +204,7 @@ func (w *Workspace) Start(id string) (bool, error) {
 		return false, err
 	}
 	for _, t := range p.Tasks {
-		if t.Meta.ID == id && t.Meta.State == "in_progress" && plan.ApprovalFresh(p) {
+		if t.Meta.ID == id && t.Meta.State == plan.StateInProgress && plan.ApprovalFresh(p) {
 			return false, nil
 		}
 	}
@@ -220,10 +217,10 @@ func (w *Workspace) Start(id string) (bool, error) {
 	}
 	for i := range p.Tasks {
 		if p.Tasks[i].Meta.ID == id {
-			if p.Tasks[i].Meta.State == "in_progress" {
+			if p.Tasks[i].Meta.State == plan.StateInProgress {
 				return false, nil
 			}
-			p.Tasks[i].Meta.State = "in_progress"
+			p.Tasks[i].Meta.State = plan.StateInProgress
 			return true, w.Publish(map[string][]byte{p.Tasks[i].Path: plan.RenderTask(p.Tasks[i])})
 		}
 	}
@@ -268,6 +265,14 @@ func (w *Workspace) ValidateLinks(p plan.Plan) []plan.Finding {
 	return plan.SortedFindings(findings)
 }
 
+func (w *Workspace) Findings(p plan.Plan) []plan.Finding {
+	f := append(plan.Validate(p), w.ValidateLinks(p)...)
+	if err := w.CheckAgents(); err != nil {
+		f = append(f, plan.Finding{Path: "AGENTS.md", Field: "managed_block", Message: err.Error()})
+	}
+	return f
+}
+
 func (w *Workspace) Complete(id string) (bool, error) {
 	p, err := w.Load()
 	if err != nil {
@@ -281,10 +286,10 @@ func (w *Workspace) Complete(id string) (bool, error) {
 		if t.Meta.ID != id {
 			continue
 		}
-		if t.Meta.State == "done" {
+		if t.Meta.State == plan.StateDone {
 			return false, nil
 		}
-		if t.Meta.State != "in_progress" {
+		if t.Meta.State != plan.StateInProgress {
 			return false, fmt.Errorf("task %s is not active", id)
 		}
 		if !plan.AllChecked(t.Sections["Deliverables"]) || !plan.AllChecked(t.Sections["Acceptance criteria"]) {
@@ -299,7 +304,7 @@ func (w *Workspace) Complete(id string) (bool, error) {
 		if err := w.validateLinks(t.Raw); err != nil {
 			return false, err
 		}
-		t.Meta.State = "done"
+		t.Meta.State = plan.StateDone
 		return true, w.Publish(map[string][]byte{t.Path: plan.RenderTask(*t)})
 	}
 	return false, fmt.Errorf("unknown task %s", id)
@@ -336,7 +341,8 @@ func (w *Workspace) RemovalPreview() ([]string, error) {
 }
 
 func (w *Workspace) Remove(force bool) error {
-	if _, err := w.RemovalPreview(); err != nil {
+	preview, err := w.RemovalPreview()
+	if err != nil {
 		return err
 	}
 	if !force {
@@ -344,10 +350,10 @@ func (w *Workspace) Remove(force bool) error {
 		if err != nil {
 			return err
 		}
-		if len(plan.Validate(p)) > 0 || len(w.ValidateLinks(p)) > 0 || plan.DeriveStatus(p).State != "completed" {
+		if len(w.ValidateLinks(p)) > 0 || plan.DeriveStatus(p).State != "completed" {
 			return fmt.Errorf("default removal requires a valid completed plan")
 		}
-		if err = w.gitPlanClean(); err != nil {
+		if err = w.gitPlanClean(preview); err != nil {
 			return err
 		}
 	}
@@ -360,37 +366,30 @@ func (w *Workspace) Remove(force bool) error {
 	if err != nil {
 		return err
 	}
-	lock, err := w.lockPath()
-	if err != nil {
-		return err
-	}
-	lf, err := os.OpenFile(lock, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-	if err != nil {
-		return fmt.Errorf("another gp mutation is in progress")
-	}
-	lf.Close()
-	defer os.Remove(lock)
-	planPath := filepath.Join(w.Root, ".go-plan")
-	backup := filepath.Join(w.Root, ".gp-remove-backup")
-	if _, e := os.Lstat(backup); e == nil {
-		return fmt.Errorf("removal backup path already exists")
-	}
-	if err = os.Rename(planPath, backup); err != nil {
-		return err
-	}
-	rollback := func() { _ = os.Rename(backup, planPath); _ = os.WriteFile(agentPath, old, 0644) }
-	if len(next) == 0 {
-		err = os.Remove(agentPath)
-	} else {
-		err = os.WriteFile(agentPath, next, 0644)
-	}
-	if err != nil {
-		rollback()
-		return err
-	}
-	if err = os.RemoveAll(backup); err != nil {
-		rollback()
-		return err
-	}
-	return nil
+	return w.withLock(func() error {
+		planPath := filepath.Join(w.Root, ".go-plan")
+		backup := filepath.Join(w.Root, ".gp-remove-backup")
+		if _, e := os.Lstat(backup); e == nil {
+			return fmt.Errorf("removal backup path already exists")
+		}
+		if err := os.Rename(planPath, backup); err != nil {
+			return err
+		}
+		rollback := func() { _ = os.Rename(backup, planPath); _ = os.WriteFile(agentPath, old, 0644) }
+		var writeErr error
+		if len(next) == 0 {
+			writeErr = os.Remove(agentPath)
+		} else {
+			writeErr = os.WriteFile(agentPath, next, 0644)
+		}
+		if writeErr != nil {
+			rollback()
+			return writeErr
+		}
+		if err := os.RemoveAll(backup); err != nil {
+			rollback()
+			return err
+		}
+		return nil
+	})
 }
