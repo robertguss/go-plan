@@ -7,7 +7,7 @@ specification and this plan receive explicit approval.
 
 ## Approach
 
-Implement `gp` as a small Cobra adapter over two deep internal modules:
+Implement `goplan` as a small Cobra adapter over two deep internal modules:
 
 1. A pure `plan` module that owns canonical parsing, validation, approval
    normalization, lifecycle rules, and live queries.
@@ -23,7 +23,7 @@ principles approved in the v1 specification.
 ## Architecture
 
 ```text
-cmd/gp
+cmd/goplan
   │
   ▼
 internal/cli
@@ -64,7 +64,7 @@ and Git command execution begin as private implementation details.
 ## Technology and dependencies
 
 - Go module: `github.com/robertguss/go-plan`.
-- Executable package: `cmd/gp`.
+- Executable package: `cmd/goplan`.
 - Cobra for commands, flags, validation, and layered help.
 - No Viper.
 - `github.com/goccy/go-yaml` pinned to `v1.19.2`; strict decode is combined
@@ -124,7 +124,7 @@ Expected production paths:
 ```text
 go.mod
 go.sum
-cmd/gp/main.go
+cmd/goplan/main.go
 internal/cli/
 internal/plan/
 internal/workspace/
@@ -155,7 +155,7 @@ verification baseline is:
 gofmt -w <files changed by the task>
 go test ./...
 go vet ./...
-go build ./cmd/gp
+go build ./cmd/goplan
 ```
 
 High-risk filesystem and lifecycle slices additionally run:
@@ -167,7 +167,7 @@ go test -race ./...
 Compatibility and installation verification additionally run:
 
 ```sh
-go install ./cmd/gp
+go install ./cmd/goplan
 ```
 
 Tests must not write to the reference repository. Temporary Git repositories
@@ -176,7 +176,7 @@ not part of any runtime or acceptance test.
 
 ## Decisions and tradeoffs
 
-- The installed binary is `gp`; there is no second `go-plan` executable.
+- The installed binary is `goplan`; there is no second `go-plan` executable.
 - Cobra is worth one dependency because command discoverability, validation,
   nested task verbs, and help are product behavior. Viper is rejected because
   environment/config precedence would weaken repository determinism.
@@ -231,18 +231,18 @@ a substitute for transaction tests.
 
 ### T-001: Establish the Go module and agent-friendly Cobra shell
 
-**Goal:** Produce an installable `gp` executable with the approved command tree,
+**Goal:** Produce an installable `goplan` executable with the approved command tree,
 global flags, layered help, examples, and testable error/output adapters, while
 leaving domain commands explicitly unimplemented.
 
 **Covers:** AC-019, AC-020, AC-023
 
-**Likely files:** `go.mod`, `go.sum`, `cmd/gp/main.go`,
+**Likely files:** `go.mod`, `go.sum`, `cmd/goplan/main.go`,
 `internal/cli/root.go`, `internal/cli/root_test.go`
 
 **Acceptance criteria:**
 
-- [ ] The executable name and root use are `gp`, and no `go-plan` executable is
+- [ ] The executable name and root use are `goplan`, and no `go-plan` executable is
   built.
 - [ ] Every approved plan-wide and `task` subcommand appears in scoped help with
   at least one real example.
@@ -257,7 +257,7 @@ leaving domain commands explicitly unimplemented.
 go test ./internal/cli -run 'TestRoot|TestHelp'
 go test ./...
 go vet ./...
-go build ./cmd/gp
+go build ./cmd/goplan
 ```
 
 **Complete when:** The binary builds and help/error goldens prove the complete
@@ -359,7 +359,7 @@ go vet ./...
 **Complete when:** Temporary real repositories and fault injection prove the
 workspace interface can safely support initialization and later mutations.
 
-### T-005: Deliver `gp init` and managed `AGENTS.md` installation
+### T-005: Deliver `goplan init` and managed `AGENTS.md` installation
 
 **Goal:** Provide the first end-to-end product workflow by initializing a draft
 plan and installing discoverable agent instructions.
@@ -372,7 +372,7 @@ plan and installing discoverable agent instructions.
 
 **Acceptance criteria:**
 
-- [ ] `gp init --title` creates exactly the canonical v1 layout from embedded
+- [ ] `goplan init --title` creates exactly the canonical v1 layout from embedded
   assets and refuses any pre-existing `.go-plan` path.
 - [ ] Existing `AGENTS.md` bytes outside the marked block are preserved; a
   missing file is created; malformed or duplicate markers are rejected.
@@ -386,13 +386,13 @@ go test ./internal/workspace -run 'TestInitialize|TestAgents'
 go test ./internal/cli -run TestInit
 go test ./...
 go vet ./...
-go build ./cmd/gp
+go build ./cmd/goplan
 ```
 
-**Complete when:** A compiled `gp` initializes a complete offline draft without
+**Complete when:** A compiled `goplan` initializes a complete offline draft without
 creating any projection or touching unrelated repository content.
 
-### T-006: Deliver `gp check` and `gp status`
+### T-006: Deliver `goplan check` and `goplan status`
 
 **Goal:** Expose full read-only validation and derived lifecycle status through
 shared typed results and stable human/JSON renderers.
@@ -561,7 +561,7 @@ renumbered suffix or preserve every original byte.
 
 ### T-011: Deliver safe whole-plan removal
 
-**Goal:** Make the stale-context cleanup workflow easy while ensuring `gp`
+**Goal:** Make the stale-context cleanup workflow easy while ensuring `goplan`
 cannot delete unrelated or unrecoverable content accidentally.
 
 **Covers:** AC-015, AC-016, AC-017, AC-018, AC-021
@@ -618,7 +618,7 @@ claiming safety or release readiness.
 go test ./...
 go test -race ./...
 go vet ./...
-go build ./cmd/gp
+go build ./cmd/goplan
 ```
 
 **Complete when:** The complete adversarial suite passes on supported systems and
@@ -642,7 +642,7 @@ and local installation verification.
 - [ ] README examples cover install, initialize, author, check, approve, execute,
   revise, query, dry-run, remove, and recovery without promising Windows or
   release archives.
-- [ ] A fresh environment can `go install ./cmd/gp`, run the documented workflow
+- [ ] A fresh environment can `go install ./cmd/goplan`, run the documented workflow
   in a temporary Git repository, and remove the completed plan safely.
 
 **Verification:**
@@ -651,8 +651,8 @@ and local installation verification.
 go test ./...
 go test -race ./...
 go vet ./...
-go build ./cmd/gp
-go install ./cmd/gp
+go build ./cmd/goplan
+go install ./cmd/goplan
 ```
 
 **Complete when:** All specification acceptance criteria have passing automated
@@ -702,7 +702,7 @@ this implementation plan, not a generated runtime projection.
 
 ### Checkpoint B: After T-006
 
-- [ ] A compiled `gp` initializes, checks, and reports status for a real temporary
+- [ ] A compiled `goplan` initializes, checks, and reports status for a real temporary
   Git repository without network or generated projections.
 - [ ] Initialization and AGENTS integration rollback tests pass.
 

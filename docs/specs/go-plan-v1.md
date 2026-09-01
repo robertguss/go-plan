@@ -3,17 +3,17 @@
 Status: Approved
 Date: 2026-08-31
 Product name: `go-plan`
-Executable name: `gp`
+Executable name: `goplan`
 
 ## Objective
 
 `go-plan` is a reusable, project-agnostic Go CLI that installs and enforces a
 Git-native planning framework for coding projects. Humans, LLMs, and coding
-agents use `gp` to create an active plan, author its documents, approve it,
+agents use `goplan` to create an active plan, author its documents, approve it,
 select the next task, record execution progress, validate completion, and
 remove the plan when it is finished.
 
-`gp` is deterministic and offline. It does not invoke an LLM, run project
+`goplan` is deterministic and offline. It does not invoke an LLM, run project
 verification commands, use a hosted service, or require a network after the
 binary has been installed. The calling human or agent supplies the judgment;
 the CLI supplies the structure, lifecycle, validation, and filesystem safety.
@@ -49,7 +49,7 @@ Build order: `format` → `workspace` → `workflow` → `cli`.
   stale projections cannot become context.
 - Make initialization, mutation, renumbering, and removal safe against partial
   writes, symlinks, path escape, and accidental overwrite.
-- Remain compatible with plans created by any `gp` binary implementing the same
+- Remain compatible with plans created by any `goplan` binary implementing the same
   major schema, `go-plan/v1`.
 
 ## Non-goals
@@ -77,28 +77,28 @@ Build order: `format` → `workspace` → `workflow` → `cli`.
 1. From anywhere inside a Git worktree, run:
 
    ```sh
-   gp init --title "Add offline project planning"
+   goplan init --title "Add offline project planning"
    ```
 
-2. `gp` discovers the Git root, creates `.go-plan/`, adds a managed block to
+2. `goplan` discovers the Git root, creates `.go-plan/`, adds a managed block to
    root `AGENTS.md`, and reports the created canonical files.
 3. The human or agent authors the specification and implementation plan and
    creates the ordered tasks.
-4. Run `gp check` until the plan is structurally complete and every
+4. Run `goplan check` until the plan is structurally complete and every
    specification acceptance criterion is covered by at least one task.
-5. Run `gp approve`. Humans and agents are equally permitted to approve.
+5. Run `goplan approve`. Humans and agents are equally permitted to approve.
 
 ### Agent executes the plan
 
-1. Run `gp check` and `gp status`.
-2. Run `gp ready` to obtain the only task that may start, or no task when the
+1. Run `goplan check` and `goplan status`.
+2. Run `goplan ready` to obtain the only task that may start, or no task when the
    plan is blocked, under review, active, or complete.
-3. Run `gp task start T-001`.
+3. Run `goplan task start T-001`.
 4. Implement the task and independently run the task's declared verification
    commands or arrange review by another model.
 5. Check every deliverable and acceptance criterion and record verification
    results or evidence in the task document.
-6. Run `gp task complete T-001`.
+6. Run `goplan task complete T-001`.
 7. Repeat for the next numeric task.
 
 ### Human or agent revises a plan
@@ -107,19 +107,19 @@ Build order: `format` → `workspace` → `workflow` → `cli`.
    unfinished task suffix.
 2. Use task mutation commands for additions, removals, or reordering. Task
    renumbering and reference updates are transactional.
-3. `gp` reports that approval is stale because planning content no longer
+3. `goplan` reports that approval is stale because planning content no longer
    matches the recorded digest.
-4. Run `gp check`, review the revised plan, and run `gp approve` again.
+4. Run `goplan check`, review the revised plan, and run `goplan approve` again.
 5. Completed tasks remain immutable; changed requirements become new later
    tasks.
 
 ### Human or agent retires a completed plan
 
 1. Commit the completed plan so Git contains its history.
-2. Run `gp remove --dry-run` and inspect the exact managed changes.
-3. Run `gp remove --yes`.
-4. `gp` removes `.go-plan/` and only its marked block in root `AGENTS.md`.
-5. Commit the removal. A later `gp init` starts a new plan without stale files.
+2. Run `goplan remove --dry-run` and inspect the exact managed changes.
+3. Run `goplan remove --yes`.
+4. `goplan` removes `.go-plan/` and only its marked block in root `AGENTS.md`.
+5. Commit the removal. A later `goplan init` starts a new plan without stale files.
 
 ## Canonical repository layout
 
@@ -171,7 +171,7 @@ The exact serialized field order is stable. Unknown fields are rejected in v1.
 No timestamp, hostname, username, or wall-clock value is written to canonical
 files.
 
-`approval_digest` is `null` until approval. `gp approve` records a SHA-256
+`approval_digest` is `null` until approval. `goplan approve` records a SHA-256
 digest over approval-bound planning content. The approval record does not
 contain an approver identity, signature, decision document, or audit metadata.
 
@@ -198,7 +198,7 @@ this pattern:
 - AC-NNN: State one observable completion condition.
 ```
 
-`gp approve` rejects missing sections, template placeholders, duplicate or
+`goplan approve` rejects missing sections, template placeholders, duplicate or
 malformed acceptance IDs, and unresolved open questions. A resolved document
 uses `None.` in `Open questions`.
 
@@ -278,7 +278,7 @@ T-001 → T-002 → T-003 → ... → T-NNN
   predecessor.
 - At most one task may be `in_progress`.
 - Later tasks cannot start early for any reason.
-- `gp ready` returns either the first open task or no task. It returns no task
+- `goplan ready` returns either the first open task or no task. It returns no task
   when an earlier task is active, the plan requires approval, or the plan is
   complete.
 
@@ -287,7 +287,7 @@ T-001 → T-002 → T-003 → ... → T-NNN
 - Completed tasks form an immutable prefix.
 - The current `in_progress` task retains its ID during suffix reordering.
 - Open tasks may be added, edited, removed, or reordered.
-- `gp task add --after T-NNN`, `gp task remove`, and `gp task reorder` renumber
+- `goplan task add --after T-NNN`, `goplan task remove`, and `goplan task reorder` renumber
   the affected open suffix and update exact task references inside `.go-plan/`.
 - Renumbering is previewable and transactional.
 - Any change to approval-bound content invalidates approval.
@@ -296,7 +296,7 @@ T-001 → T-002 → T-003 → ... → T-NNN
 
 ## Approval model
 
-Approval is caller-neutral. A human, LLM, or coding agent may run `gp approve`.
+Approval is caller-neutral. A human, LLM, or coding agent may run `goplan approve`.
 There are no gates, decision records, approver identities, or signed-commit
 requirements.
 
@@ -343,11 +343,11 @@ and reapproving the unfinished plan.
 
 ## Verification and completion
 
-`gp` never runs a task's project commands. The implementing LLM or human runs
+`goplan` never runs a task's project commands. The implementing LLM or human runs
 verification, addresses failures, and may ask a separate reviewer or model to
 verify the work.
 
-`gp task complete T-NNN` succeeds only when:
+`goplan task complete T-NNN` succeeds only when:
 
 - the plan has a current approval digest;
 - the task is the single active task;
@@ -362,32 +362,32 @@ verification is truthful or technically sufficient.
 
 ## Command contract
 
-The sole supported executable is `gp`. The repository and module remain named
+The sole supported executable is `goplan`. The repository and module remain named
 `go-plan`.
 
 ### Plan-wide commands
 
 | Command | Contract |
 |---|---|
-| `gp init --title <title>` | Initialize one draft plan at the discovered Git root; refuse an existing plan |
-| `gp status` | Report derived plan state, counts, active task, approval freshness, and next task |
-| `gp check` | Read-only validation of canonical files, links, sequence, lifecycle, approval, and managed integration |
-| `gp approve` | Validate approval prerequisites and replace `approval_digest` transactionally |
-| `gp ready` | Return the single open task that may start, or no task |
-| `gp graph` | Render the live linear execution graph as deterministic ASCII or JSON |
-| `gp remove` | Preview or remove the active plan and managed `AGENTS.md` block subject to safety rules |
+| `goplan init --title <title>` | Initialize one draft plan at the discovered Git root; refuse an existing plan |
+| `goplan status` | Report derived plan state, counts, active task, approval freshness, and next task |
+| `goplan check` | Read-only validation of canonical files, links, sequence, lifecycle, approval, and managed integration |
+| `goplan approve` | Validate approval prerequisites and replace `approval_digest` transactionally |
+| `goplan ready` | Return the single open task that may start, or no task |
+| `goplan graph` | Render the live linear execution graph as deterministic ASCII or JSON |
+| `goplan remove` | Preview or remove the active plan and managed `AGENTS.md` block subject to safety rules |
 
 ### Task commands
 
 | Command | Contract |
 |---|---|
-| `gp task add --title <title> [--cover AC-NNN]... [--after T-NNN]` | Append or insert the next numeric task from the embedded template |
-| `gp task list` | List tasks in numeric order with state and coverage |
-| `gp task show T-NNN` | Show one parsed task and its readiness/completion factors |
-| `gp task start T-NNN` | Start only the first open task of a currently approved plan |
-| `gp task complete T-NNN` | Complete only the active task after documentation checks pass |
-| `gp task reorder --order T-NNN,T-NNN,...` | Preview or transactionally reorder and renumber the mutable suffix |
-| `gp task remove T-NNN` | Preview or remove an open task and renumber the mutable suffix |
+| `goplan task add --title <title> [--cover AC-NNN]... [--after T-NNN]` | Append or insert the next numeric task from the embedded template |
+| `goplan task list` | List tasks in numeric order with state and coverage |
+| `goplan task show T-NNN` | Show one parsed task and its readiness/completion factors |
+| `goplan task start T-NNN` | Start only the first open task of a currently approved plan |
+| `goplan task complete T-NNN` | Complete only the active task after documentation checks pass |
+| `goplan task reorder --order T-NNN,T-NNN,...` | Preview or transactionally reorder and renumber the mutable suffix |
+| `goplan task remove T-NNN` | Preview or remove an open task and renumber the mutable suffix |
 
 `--cover` is repeatable and may be omitted for an enabling task. `--after`
 inserts after the identified task and is limited by completed-prefix and active-
@@ -485,7 +485,7 @@ T-002 [in_progress] Implement format
 T-003 [open] Add workflow
 ```
 
-An empty sequence renders `(no tasks)`. `gp graph --json` returns ordered
+An empty sequence renders `(no tasks)`. `goplan graph --json` returns ordered
 `nodes` with `id`, `title`, and `state`, plus ordered `edges` with `from` and
 `to`. v1 does not include DOT, Mermaid, Unicode connectors, or graph files.
 
@@ -499,8 +499,8 @@ to:
 <!-- go-plan:managed:start schema=go-plan/v1 -->
 ## Active go-plan
 
-Generated by `gp` from https://github.com/robertguss/go-plan.
-Run `gp status`, `gp check`, and `gp ready` before selecting work.
+Generated by `goplan` from https://github.com/robertguss/go-plan.
+Run `goplan status`, `goplan check`, and `goplan ready` before selecting work.
 Do not edit content inside these markers.
 <!-- go-plan:managed:end -->
 ```
@@ -508,15 +508,15 @@ Do not edit content inside these markers.
 - Initialization refuses duplicate or malformed managed markers.
 - Mutations preserve bytes outside the managed block.
 - Removal deletes only the exact managed block.
-- If `gp` created `AGENTS.md` and no user content remains, removal deletes the
+- If `goplan` created `AGENTS.md` and no user content remains, removal deletes the
   file; otherwise the user-authored file remains.
-- `gp check` detects missing, duplicated, or modified managed instructions.
+- `goplan check` detects missing, duplicated, or modified managed instructions.
 
 ## Git behavior
 
-- A Git worktree is mandatory; `gp init` refuses any other directory.
+- A Git worktree is mandatory; `goplan init` refuses any other directory.
 - Git is used for repository discovery and removal safety checks.
-- `gp` never stages, commits, switches branches, fetches, pulls, pushes, or
+- `goplan` never stages, commits, switches branches, fetches, pulls, pushes, or
   changes Git configuration.
 - Default removal requires every file under `.go-plan/` to be tracked and clean
   so Git contains the plan version being removed.
@@ -534,7 +534,7 @@ Do not edit content inside these markers.
 - New records never overwrite existing files.
 - Multi-file mutations stage complete output, validate it, and publish it with
   rollback on reported failure.
-- A repository-local lock prevents concurrent `gp` mutations in one checkout.
+- A repository-local lock prevents concurrent `goplan` mutations in one checkout.
 - Read commands do not take an exclusive lock unless needed for a consistent
   snapshot.
 - `--force` may bypass plan validity, completion, and Git-cleanliness checks
@@ -589,7 +589,7 @@ No failure may:
 
 - Language: Go.
 - Module: `github.com/robertguss/go-plan`.
-- Executable: `cmd/gp` producing `gp`.
+- Executable: `cmd/goplan` producing `goplan`.
 - CLI framework: Cobra, without Viper.
 - Data decoding: `github.com/goccy/go-yaml` pinned to `v1.19.2`.
 - The decoder uses strict unknown-field handling and the parser is inspected to
@@ -599,12 +599,12 @@ No failure may:
   plan is amended.
 - Embedded templates and agent instructions use Go's embedded-files support.
 - Supported platforms: macOS and Linux only.
-- Distribution: `go install github.com/robertguss/go-plan/cmd/gp@latest`.
+- Distribution: `go install github.com/robertguss/go-plan/cmd/goplan@latest`.
 
 Proposed source layout:
 
 ```text
-cmd/gp/                 # Minimal executable adapter
+cmd/goplan/                 # Minimal executable adapter
 internal/cli/           # Cobra command tree and output adapters
 internal/plan/          # Deep format, validation, lifecycle, digest, and query module
 internal/workspace/     # Deep Git/filesystem/templates/transactions/AGENTS module
@@ -617,7 +617,7 @@ a seam.
 ## Code style
 
 - Follow `gofmt` and idiomatic Go naming.
-- Keep `cmd/gp` free of domain behavior.
+- Keep `cmd/goplan` free of domain behavior.
 - Return typed results and errors from modules; format them only in `internal/cli`.
 - Accept filesystem and command dependencies at internal test seams rather than
   creating global mutable state.
@@ -633,7 +633,7 @@ a seam.
   managed `AGENTS.md` block, and JSON response schema.
 - Real temporary Git repositories for initialization, Git discovery, dirty-plan
   removal, and preservation of unrelated content.
-- Subprocess-level tests of the compiled `gp` binary, stdout, stderr, and exit
+- Subprocess-level tests of the compiled `goplan` binary, stdout, stderr, and exit
   behavior.
 - Adversarial filesystem tests for traversal, symlink components, overwrite,
   interrupted publication, rollback, malformed markers, and partial deletion.
@@ -676,18 +676,18 @@ production.
 
 ## Acceptance criteria
 
-- AC-001: `gp init --title <title>` creates a complete draft plan from embedded
+- AC-001: `goplan init --title <title>` creates a complete draft plan from embedded
   assets at the discovered Git root and requires no network access.
 - AC-002: Initialization creates or safely augments root `AGENTS.md` using
   explicit managed markers and preserves all user-authored bytes outside them.
 - AC-003: Canonical files are limited to `plan.yaml`, the specification, the
   implementation plan, and one Markdown file per numeric task.
-- AC-004: `gp` persists no generated indexes, readiness files, graphs, reports,
+- AC-004: `goplan` persists no generated indexes, readiness files, graphs, reports,
   or caches in the repository.
-- AC-005: `gp check` strictly validates schema types, required sections,
+- AC-005: `goplan check` strictly validates schema types, required sections,
   placeholders, acceptance IDs, task coverage, links, task sequence, lifecycle,
   managed instructions, and approval freshness.
-- AC-006: `gp approve` records a deterministic digest only after the
+- AC-006: `goplan approve` records a deterministic digest only after the
   specification, implementation plan, and task set satisfy approval rules.
 - AC-007: Changing approval-bound planning content invalidates approval, while
   state transitions, checkbox markers, and evidence updates do not.
@@ -695,9 +695,9 @@ production.
   sequence is the sole execution dependency order.
 - AC-009: At most one task may be `in_progress`, and no task may start before
   every numerically earlier task is done.
-- AC-010: `gp ready` returns at most one task and explains why no task is ready
+- AC-010: `goplan ready` returns at most one task and explains why no task is ready
   when the plan is under review, active, invalid, or complete.
-- AC-011: `gp task complete` requires checked deliverables and task acceptance
+- AC-011: `goplan task complete` requires checked deliverables and task acceptance
   criteria plus recorded verification evidence, without running verification.
 - AC-012: Every specification acceptance criterion is covered by at least one
   task before approval; enabling tasks may have empty coverage.
@@ -705,7 +705,7 @@ production.
   removals, or reorderings atomically renumber tasks and exact references.
 - AC-014: Plan status is derived as draft, review-required, approved, executing,
   or completed; completion requires current approval and all tasks done.
-- AC-015: `gp remove --dry-run` previews exact managed changes without mutation.
+- AC-015: `goplan remove --dry-run` previews exact managed changes without mutation.
 - AC-016: Default removal requires a valid completed plan whose `.go-plan`
   files are tracked and clean in Git.
 - AC-017: Confirmed removal deletes only `.go-plan/` and the exact managed
@@ -716,13 +716,13 @@ production.
   JSON with deterministic ordering and structured errors.
 - AC-020: Every command is non-interactive and has scoped help with at least one
   copy-pasteable example.
-- AC-021: `gp` never invokes an LLM, executes host-project verification, mutates
+- AC-021: `goplan` never invokes an LLM, executes host-project verification, mutates
   Git state, or accesses a network during plan operation.
 - AC-022: The complete suite passes on macOS and Linux with unit, golden,
   subprocess, temporary-Git, fuzz-seed, race, and adversarial filesystem tests.
 - AC-023: The module installs through
-  `go install github.com/robertguss/go-plan/cmd/gp@latest` and the executable is
-  named only `gp`.
+  `go install github.com/robertguss/go-plan/cmd/goplan@latest` and the executable is
+  named only `goplan`.
 - AC-024: A current v1 binary remains compatible with canonical plans and JSON
   contracts produced by earlier v1 binaries.
 
