@@ -74,32 +74,32 @@ func marshalError(command, code, message string, details []Detail) []byte {
 // later implementation slices; every command is present now so help is stable.
 func New() *cobra.Command {
 	root := &cobra.Command{
-		Use:           "gp",
+		Use:           "goplan",
 		Short:         "Manage a deterministic Git-native implementation plan",
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		Example: strings.Join([]string{
-			`  gp init --title "Add offline planning"`,
-			"  gp status",
-			"  gp check",
-			"  gp approve",
-			"  gp ready",
-			"  gp graph",
-			"  gp remove --dry-run",
-			"  gp task --help",
+			`  goplan init --title "Add offline planning"`,
+			"  goplan status",
+			"  goplan check",
+			"  goplan approve",
+			"  goplan ready",
+			"  goplan graph",
+			"  goplan remove --dry-run",
+			"  goplan task --help",
 		}, "\n"),
 	}
 	root.PersistentFlags().String("repo", "", "repository path (defaults to the current Git worktree)")
 	root.PersistentFlags().Bool("json", false, "write one stable go-plan/v1 JSON object")
 
 	root.AddCommand(
-		stubCommand("init", "Initialize a draft plan", `gp init --title "Add offline planning"`, withStringFlag("title", "plan title", true)),
-		stubCommand("status", "Show derived plan status", "gp status"),
-		stubCommand("check", "Validate the active plan", "gp check"),
-		stubCommand("approve", "Approve current planning content", "gp approve"),
-		stubCommand("ready", "Show the one task that may start", "gp ready"),
-		stubCommand("graph", "Render the live task graph", "gp graph --json"),
-		stubCommand("remove", "Preview or remove the active plan", "gp remove --dry-run",
+		stubCommand("init", "Initialize a draft plan", `goplan init --title "Add offline planning"`, withStringFlag("title", "plan title", true)),
+		stubCommand("status", "Show derived plan status", "goplan status"),
+		stubCommand("check", "Validate the active plan", "goplan check"),
+		stubCommand("approve", "Approve current planning content", "goplan approve"),
+		stubCommand("ready", "Show the one task that may start", "goplan ready"),
+		stubCommand("graph", "Render the live task graph", "goplan graph --json"),
+		stubCommand("remove", "Preview or remove the active plan", "goplan remove --dry-run",
 			withBoolFlag("dry-run", "preview without changing files"),
 			withBoolFlag("yes", "confirm removal"),
 			withBoolFlag("force", "bypass validity, completion, and Git-cleanliness checks")),
@@ -139,7 +139,7 @@ func stubCommand(use, short, example string, options ...commandOption) *cobra.Co
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return &commandError{
-				Command: cmd.CommandPath()[len("gp "):],
+				Command: cmd.CommandPath()[len("goplan "):],
 				Code:    "not_implemented",
 				Message: cmd.CommandPath() + " is not implemented",
 				Details: []Detail{},
@@ -157,28 +157,28 @@ func newTaskCommand() *cobra.Command {
 		Use:   "task",
 		Short: "Manage the sequential task set",
 		Example: strings.Join([]string{
-			`  gp task add --title "Implement parser"`,
-			"  gp task list",
-			"  gp task show T-001",
-			"  gp task start T-001",
-			"  gp task complete T-001",
-			"  gp task reorder --order T-003,T-002",
-			"  gp task remove T-003 --dry-run",
+			`  goplan task add --title "Implement parser"`,
+			"  goplan task list",
+			"  goplan task show T-001",
+			"  goplan task start T-001",
+			"  goplan task complete T-001",
+			"  goplan task reorder --order T-003,T-002",
+			"  goplan task remove T-003 --dry-run",
 		}, "\n"),
 	}
 	task.AddCommand(
-		stubCommand("add", "Add a task to the mutable suffix", `gp task add --title "Implement parser" --cover AC-001`,
+		stubCommand("add", "Add a task to the mutable suffix", `goplan task add --title "Implement parser" --cover AC-001`,
 			withStringFlag("title", "task title", true),
 			withStringSliceFlag("cover", "acceptance criterion covered (repeatable)"),
 			withStringFlag("after", "insert after task ID", false)),
-		stubCommand("list", "List tasks in numeric order", "gp task list"),
-		stubCommand("show ID", "Show a parsed task", "gp task show T-001", withArgs(cobra.ExactArgs(1))),
-		stubCommand("start ID", "Start the one ready task", "gp task start T-001", withArgs(cobra.ExactArgs(1))),
-		stubCommand("complete ID", "Complete the active task", "gp task complete T-001", withArgs(cobra.ExactArgs(1))),
-		stubCommand("reorder", "Reorder the mutable task suffix", "gp task reorder --order T-003,T-002 --dry-run",
+		stubCommand("list", "List tasks in numeric order", "goplan task list"),
+		stubCommand("show ID", "Show a parsed task", "goplan task show T-001", withArgs(cobra.ExactArgs(1))),
+		stubCommand("start ID", "Start the one ready task", "goplan task start T-001", withArgs(cobra.ExactArgs(1))),
+		stubCommand("complete ID", "Complete the active task", "goplan task complete T-001", withArgs(cobra.ExactArgs(1))),
+		stubCommand("reorder", "Reorder the mutable task suffix", "goplan task reorder --order T-003,T-002 --dry-run",
 			withStringFlag("order", "comma-separated mutable task IDs", true),
 			withBoolFlag("dry-run", "preview without changing files")),
-		stubCommand("remove ID", "Remove an open task", "gp task remove T-003 --dry-run",
+		stubCommand("remove ID", "Remove an open task", "goplan task remove T-003 --dry-run",
 			withArgs(cobra.ExactArgs(1)),
 			withBoolFlag("dry-run", "preview without changing files")),
 	)
@@ -226,5 +226,5 @@ func commandName(args []string) string {
 			return arg
 		}
 	}
-	return "gp"
+	return "goplan"
 }

@@ -11,10 +11,10 @@ import (
 	"testing"
 )
 
-func TestRootUsesGPAndWiresGlobalFlags(t *testing.T) {
+func TestRootUsesGoplanAndWiresGlobalFlags(t *testing.T) {
 	cmd := New()
-	if cmd.Use != "gp" {
-		t.Fatalf("Use = %q, want gp", cmd.Use)
+	if cmd.Use != "goplan" {
+		t.Fatalf("Use = %q, want goplan", cmd.Use)
 	}
 	if cmd.PersistentFlags().Lookup("repo") == nil {
 		t.Fatal("missing --repo")
@@ -29,8 +29,8 @@ func TestHelpListsCompleteCommandSurfaceAndExamples(t *testing.T) {
 		args []string
 		want []string
 	}{
-		{[]string{"--help"}, []string{"gp init", "gp status", "gp check", "gp approve", "gp ready", "gp graph", "gp remove", "gp task"}},
-		{[]string{"task", "--help"}, []string{"gp task add", "gp task list", "gp task show", "gp task start", "gp task complete", "gp task reorder", "gp task remove"}},
+		{[]string{"--help"}, []string{"goplan init", "goplan status", "goplan check", "goplan approve", "goplan ready", "goplan graph", "goplan remove", "goplan task"}},
+		{[]string{"task", "--help"}, []string{"goplan task add", "goplan task list", "goplan task show", "goplan task start", "goplan task complete", "goplan task reorder", "goplan task remove"}},
 	}
 	for _, tt := range tests {
 		var stdout, stderr bytes.Buffer
@@ -117,11 +117,11 @@ func TestRootJSONGoldens(t *testing.T) {
 }
 
 func TestRootSubprocessExitCodes(t *testing.T) {
-	bin := filepath.Join(t.TempDir(), "gp")
-	build := exec.Command("go", "build", "-o", bin, "../../cmd/gp")
+	bin := filepath.Join(t.TempDir(), "goplan")
+	build := exec.Command("go", "build", "-o", bin, "../../cmd/goplan")
 	build.Env = append(os.Environ(), "GOCACHE="+filepath.Join(t.TempDir(), "gocache"))
 	if output, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build gp: %v\n%s", err, output)
+		t.Fatalf("build goplan: %v\n%s", err, output)
 	}
 	for _, tt := range []struct {
 		name string
