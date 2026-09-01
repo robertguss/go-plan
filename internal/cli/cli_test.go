@@ -62,7 +62,7 @@ func TestCLIHelper(t *testing.T) {
 	if os.Getenv("GO_PLAN_HELPER") != "1" {
 		return
 	}
-	os.Args = append([]string{"gp"}, strings.Split(os.Getenv("GO_PLAN_ARGS"), "\x1f")...)
+	os.Args = append([]string{"goplan"}, strings.Split(os.Getenv("GO_PLAN_ARGS"), "\x1f")...)
 	os.Exit(Execute())
 }
 

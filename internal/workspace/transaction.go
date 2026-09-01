@@ -29,7 +29,7 @@ func (w *Workspace) withLock(fn func() error) error {
 	}
 	lf, err := os.OpenFile(lock, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
-		return fmt.Errorf("another gp mutation is in progress")
+		return fmt.Errorf("another goplan mutation is in progress")
 	}
 	lf.Close()
 	defer os.Remove(lock)
@@ -41,7 +41,7 @@ func (w *Workspace) withLock(fn func() error) error {
 // removes a managed file.
 func (w *Workspace) Publish(files map[string][]byte) error {
 	return w.withLock(func() error {
-		tmp, err := os.MkdirTemp(w.Root, ".gp-transaction-")
+		tmp, err := os.MkdirTemp(w.Root, ".goplan-transaction-")
 		if err != nil {
 			return err
 		}

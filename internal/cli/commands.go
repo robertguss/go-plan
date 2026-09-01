@@ -54,7 +54,7 @@ type revisionResult struct {
 
 func initCmd(o *options) *cobra.Command {
 	var title string
-	c := &cobra.Command{Use: "init", Short: "Initialize a draft plan", Example: "  gp init --title \"Add offline planning\"", Args: exactArgs(0), RunE: func(c *cobra.Command, _ []string) error {
+	c := &cobra.Command{Use: "init", Short: "Initialize a draft plan", Example: "  goplan init --title \"Add offline planning\"", Args: exactArgs(0), RunE: func(c *cobra.Command, _ []string) error {
 		if title == "" {
 			return annotate(c, &usageError{err: fmt.Errorf("--title is required")})
 		}
@@ -76,7 +76,7 @@ func initCmd(o *options) *cobra.Command {
 }
 
 func checkCmd(o *options) *cobra.Command {
-	return &cobra.Command{Use: "check", Short: "Validate the active plan", Example: "  gp check\n  gp check --json", Args: exactArgs(0), RunE: func(c *cobra.Command, _ []string) error {
+	return &cobra.Command{Use: "check", Short: "Validate the active plan", Example: "  goplan check\n  goplan check --json", Args: exactArgs(0), RunE: func(c *cobra.Command, _ []string) error {
 		return o.do(c, func(w *workspace.Workspace) (any, func(io.Writer), error) {
 			p, err := w.Load()
 			if err != nil {
@@ -92,7 +92,7 @@ func checkCmd(o *options) *cobra.Command {
 }
 
 func statusCmd(o *options) *cobra.Command {
-	return &cobra.Command{Use: "status", Short: "Show derived plan status", Example: "  gp status\n  gp status --json", Args: exactArgs(0), RunE: func(c *cobra.Command, _ []string) error {
+	return &cobra.Command{Use: "status", Short: "Show derived plan status", Example: "  goplan status\n  goplan status --json", Args: exactArgs(0), RunE: func(c *cobra.Command, _ []string) error {
 		return o.do(c, func(w *workspace.Workspace) (any, func(io.Writer), error) {
 			p, err := w.Load()
 			if err != nil {
@@ -113,7 +113,7 @@ func statusCmd(o *options) *cobra.Command {
 }
 
 func approveCmd(o *options) *cobra.Command {
-	return &cobra.Command{Use: "approve", Short: "Approve current planning content", Example: "  gp approve", Args: exactArgs(0), RunE: func(c *cobra.Command, _ []string) error {
+	return &cobra.Command{Use: "approve", Short: "Approve current planning content", Example: "  goplan approve", Args: exactArgs(0), RunE: func(c *cobra.Command, _ []string) error {
 		return o.do(c, func(w *workspace.Workspace) (any, func(io.Writer), error) {
 			d, err := w.Approve()
 			if err != nil {
@@ -125,7 +125,7 @@ func approveCmd(o *options) *cobra.Command {
 }
 
 func readyCmd(o *options) *cobra.Command {
-	return &cobra.Command{Use: "ready", Short: "Show the single task allowed to start", Example: "  gp ready\n  gp ready --json", Args: exactArgs(0), RunE: func(c *cobra.Command, _ []string) error {
+	return &cobra.Command{Use: "ready", Short: "Show the single task allowed to start", Example: "  goplan ready\n  goplan ready --json", Args: exactArgs(0), RunE: func(c *cobra.Command, _ []string) error {
 		return o.do(c, func(w *workspace.Workspace) (any, func(io.Writer), error) {
 			p, err := w.Load()
 			if err != nil {
@@ -144,7 +144,7 @@ func readyCmd(o *options) *cobra.Command {
 }
 
 func graphCmd(o *options) *cobra.Command {
-	return &cobra.Command{Use: "graph", Short: "Render the live task graph", Example: "  gp graph\n  gp graph --json", Args: exactArgs(0), RunE: func(c *cobra.Command, _ []string) error {
+	return &cobra.Command{Use: "graph", Short: "Render the live task graph", Example: "  goplan graph\n  goplan graph --json", Args: exactArgs(0), RunE: func(c *cobra.Command, _ []string) error {
 		return o.do(c, func(w *workspace.Workspace) (any, func(io.Writer), error) {
 			p, err := w.Load()
 			if err != nil {
@@ -169,7 +169,7 @@ func graphCmd(o *options) *cobra.Command {
 
 func removeCmd(o *options) *cobra.Command {
 	var dry, yes, force bool
-	c := &cobra.Command{Use: "remove", Short: "Safely remove a completed plan", Example: "  gp remove --dry-run\n  gp remove --yes\n  gp remove --yes --force", Args: exactArgs(0), RunE: func(c *cobra.Command, _ []string) error {
+	c := &cobra.Command{Use: "remove", Short: "Safely remove a completed plan", Example: "  goplan remove --dry-run\n  goplan remove --yes\n  goplan remove --yes --force", Args: exactArgs(0), RunE: func(c *cobra.Command, _ []string) error {
 		if !dry && !yes {
 			return annotate(c, &usageError{err: fmt.Errorf("--yes is required for removal")})
 		}
@@ -198,7 +198,7 @@ func removeCmd(o *options) *cobra.Command {
 }
 
 func taskCmd(o *options) *cobra.Command {
-	c := &cobra.Command{Use: "task", Short: "Create, inspect, and transition tasks", Example: "  gp task list\n  gp task add --title \"Implement parser\" --cover AC-001"}
+	c := &cobra.Command{Use: "task", Short: "Create, inspect, and transition tasks", Example: "  goplan task list\n  goplan task add --title \"Implement parser\" --cover AC-001"}
 	c.AddCommand(taskAddCmd(o), taskListCmd(o), taskShowCmd(o), taskStartCmd(o), taskCompleteCmd(o), taskReorderCmd(o), taskRemoveCmd(o))
 	return c
 }
@@ -207,7 +207,7 @@ func taskAddCmd(o *options) *cobra.Command {
 	var title, after string
 	var covers []string
 	var dry bool
-	c := &cobra.Command{Use: "add", Short: "Append or insert a task", Example: "  gp task add --title \"Implement parser\" --cover AC-001\n  gp task add --title \"Add tests\" --after T-001 --dry-run", Args: exactArgs(0), RunE: func(c *cobra.Command, _ []string) error {
+	c := &cobra.Command{Use: "add", Short: "Append or insert a task", Example: "  goplan task add --title \"Implement parser\" --cover AC-001\n  goplan task add --title \"Add tests\" --after T-001 --dry-run", Args: exactArgs(0), RunE: func(c *cobra.Command, _ []string) error {
 		if title == "" {
 			return annotate(c, &usageError{err: fmt.Errorf("--title is required")})
 		}
@@ -227,7 +227,7 @@ func taskAddCmd(o *options) *cobra.Command {
 }
 
 func taskListCmd(o *options) *cobra.Command {
-	return &cobra.Command{Use: "list", Short: "List tasks in execution order", Example: "  gp task list\n  gp task list --json", Args: exactArgs(0), RunE: func(c *cobra.Command, _ []string) error {
+	return &cobra.Command{Use: "list", Short: "List tasks in execution order", Example: "  goplan task list\n  goplan task list --json", Args: exactArgs(0), RunE: func(c *cobra.Command, _ []string) error {
 		return o.do(c, func(w *workspace.Workspace) (any, func(io.Writer), error) {
 			p, err := w.Load()
 			if err != nil {
@@ -251,7 +251,7 @@ func taskListCmd(o *options) *cobra.Command {
 }
 
 func taskShowCmd(o *options) *cobra.Command {
-	return &cobra.Command{Use: "show T-NNN", Short: "Show one parsed task", Example: "  gp task show T-001\n  gp task show T-001 --json", Args: exactArgs(1), RunE: func(c *cobra.Command, args []string) error {
+	return &cobra.Command{Use: "show T-NNN", Short: "Show one parsed task", Example: "  goplan task show T-001\n  goplan task show T-001 --json", Args: exactArgs(1), RunE: func(c *cobra.Command, args []string) error {
 		return o.do(c, func(w *workspace.Workspace) (any, func(io.Writer), error) {
 			p, err := w.Load()
 			if err != nil {
@@ -270,7 +270,7 @@ func taskShowCmd(o *options) *cobra.Command {
 }
 
 func taskStartCmd(o *options) *cobra.Command {
-	return &cobra.Command{Use: "start T-NNN", Short: "Start the only ready task", Example: "  gp task start T-001", Args: exactArgs(1), RunE: func(c *cobra.Command, args []string) error {
+	return &cobra.Command{Use: "start T-NNN", Short: "Start the only ready task", Example: "  goplan task start T-001", Args: exactArgs(1), RunE: func(c *cobra.Command, args []string) error {
 		return o.do(c, func(w *workspace.Workspace) (any, func(io.Writer), error) {
 			changed, err := w.Start(args[0])
 			if err != nil {
@@ -288,7 +288,7 @@ func taskStartCmd(o *options) *cobra.Command {
 }
 
 func taskCompleteCmd(o *options) *cobra.Command {
-	return &cobra.Command{Use: "complete T-NNN", Short: "Complete the active documented task", Example: "  gp task complete T-001", Args: exactArgs(1), RunE: func(c *cobra.Command, args []string) error {
+	return &cobra.Command{Use: "complete T-NNN", Short: "Complete the active documented task", Example: "  goplan task complete T-001", Args: exactArgs(1), RunE: func(c *cobra.Command, args []string) error {
 		return o.do(c, func(w *workspace.Workspace) (any, func(io.Writer), error) {
 			changed, err := w.Complete(args[0])
 			if err != nil {
@@ -329,7 +329,7 @@ func revisionHuman(r workspace.Revision, dry bool) func(io.Writer) {
 func taskReorderCmd(o *options) *cobra.Command {
 	var value string
 	var dry bool
-	c := &cobra.Command{Use: "reorder", Short: "Reorder the mutable open suffix", Example: "  gp task reorder --order T-003,T-002 --dry-run\n  gp task reorder --order T-003,T-002", Args: exactArgs(0), RunE: func(c *cobra.Command, _ []string) error {
+	c := &cobra.Command{Use: "reorder", Short: "Reorder the mutable open suffix", Example: "  goplan task reorder --order T-003,T-002 --dry-run\n  goplan task reorder --order T-003,T-002", Args: exactArgs(0), RunE: func(c *cobra.Command, _ []string) error {
 		if value == "" {
 			return annotate(c, &usageError{err: fmt.Errorf("--order is required")})
 		}
@@ -348,7 +348,7 @@ func taskReorderCmd(o *options) *cobra.Command {
 
 func taskRemoveCmd(o *options) *cobra.Command {
 	var dry bool
-	c := &cobra.Command{Use: "remove T-NNN", Short: "Remove an open task and renumber", Example: "  gp task remove T-003 --dry-run\n  gp task remove T-003", Args: exactArgs(1), RunE: func(c *cobra.Command, args []string) error {
+	c := &cobra.Command{Use: "remove T-NNN", Short: "Remove an open task and renumber", Example: "  goplan task remove T-003 --dry-run\n  goplan task remove T-003", Args: exactArgs(1), RunE: func(c *cobra.Command, args []string) error {
 		return o.do(c, func(w *workspace.Workspace) (any, func(io.Writer), error) {
 			r, err := w.RemoveTask(args[0], dry)
 			if err != nil {

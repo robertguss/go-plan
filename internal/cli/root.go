@@ -129,10 +129,10 @@ func (o *options) do(c *cobra.Command, fn func(*workspace.Workspace) (any, func(
 func NewRoot(out, errOut io.Writer) *cobra.Command {
 	o := &options{out: out}
 	root := &cobra.Command{
-		Use:           "gp",
+		Use:           "goplan",
 		Short:         "Git-native sequential planning",
-		Long:          "gp installs and enforces one deterministic, offline implementation plan in a Git repository.",
-		Example:       "  gp init --title \"Add offline planning\"\n  gp status\n  gp ready --json",
+		Long:          "goplan installs and enforces one deterministic, offline implementation plan in a Git repository.",
+		Example:       "  goplan init --title \"Add offline planning\"\n  goplan status\n  goplan ready --json",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
